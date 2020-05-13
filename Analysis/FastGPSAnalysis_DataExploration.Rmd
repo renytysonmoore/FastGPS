@@ -1,0 +1,752 @@
+---
+title: "Basic summmary and preliminary results for the FastGPS Tag accuracy analysis"
+author: "Reny Tyson Moore, rtysonmoore@mote.org"
+date: "May 6, 2020"
+output:
+  html_document:
+    df_print: paged
+  word_document: default
+  pdf_document: default
+---
+
+```{r,echo=F,message=F,warning=F}
+# Clear work space ------------------------
+rm(list=ls())
+
+# Load libraries ------------------------
+library(tidyverse)
+library(lubridate)
+library(here)
+library(knitr)
+library(gt)
+library(sass)
+library(patchwork)
+library(sf)
+library(raster)
+library(geosphere)
+
+# Load data ------------------------
+load(here::here('GPS Tag/Manuscipt/Data/FastGPS_data_updated.RData'))
+snaps <- FastGPS_data[[1]]
+
+snaps$PTT <- as.factor(snaps$Name)
+```
+
+
+```{r global_options, echo=F, include=FALSE,warning=F,message=F}
+knitr::opts_chunk$set(fig.width=8, fig.height=4, fig.align = 'center',fig.path='Figs/',
+                      echo=FALSE, warning=FALSE, message=FALSE)
+
+opts_knit$set(root.dir = here::here("GPS Tag/Manuscipt/Analysis"))
+
+options(scipen=999,digits=5)
+```
+
+## FastGPS Analysis - Field Tests
+**Methods:**   
+- I downloaded all data from the data portal on 19 March 2020 after performing location processing.  
+- For each PTT ID, I opened the FastGPS files and corrected the Time records by subtracting the Time Offset (after confirming with Matt that this was correct). I also subtracted 4hrs, so times were reported as local times to directly compare with our focal follow data   
+- I manually went through all FastGPS records and compared them to our focal follow data records. Any tag times that were within 2 minutes of a focal follow observation of the tagged individual that included a distance and bearing estimate were identified as a 'snap' (*i.e.,* a matched record) for further analyses. We identified 56 snaps (179062 = 16 snaps, 179063 = 23 snaps, 179064 = 17 snaps)  
+- Five of the snaps did not have latitude/longitude data available from the FastGPS records. This left 54 snaps for analysis (179062 = 13 snaps, 179063 = 21 snaps, 179064 = 20 snaps)  
+- I created a spreadsheet that contained all snaps records from the FastGPS files downloaded from the portal along with the focal follow data recorded from the field.  
+- Within this spreadsheet I added columns to identify corresponding location data from the boat's GPS. Given we had set our GPS to record every fro seconds, I had to find the time from the GPS that was closest to the time recorded for our follow observation, and record that corresponding time, latitude, and longitude. All track times were within 5 seconds of the follow observation time.   
+- All location data were projected to NAD 83 UTM 17N in R, so that measurements of distance could be made in km/m.  
+- The *true* dolphin locations were estimated using the destpoint function from the geosphere package in R. I used the location obtained from the boat's GPS from the time that was closest to the reported focal follow observation time, along with our estimates of the distance and bearing of the dolphin from the boats location. Note: 5 distances were estimated from a range finder, 49 were estimated by eye. Bearing estimates were made from a hand held compass.   
+- Distances between the estimated *true* dolphin locations and the locations reported by the FastGPS tags were calculated using the pointDistance function from the raster package in R.
+     
+   
+**Updated May 6, 2019:**   
+- Edmund Bryant recently updated the location processing system, LocSolve, used to derive the locations from Fastloc records and re-ran the tag data to compare with the older version's output. Below you will find the results from both location processing runs (old and new LocSolve). With the new processing, all records had residuals less than 35 and 29 records used 5 or more satellites to acquire locations. This resulted in 29 'good' quality locations using the new LocSolve, versus 15 from the older LocSolve version.
+
+```{r}
+all.data <- snaps %>% 
+  summarise(N = n(),
+            mean.distance = mean(dist.UTM),
+            median.distance = median(dist.UTM),
+            sd.distance = sd(dist.UTM),
+            min.distance = min(dist.UTM),
+            max.distance = max(dist.UTM))    
+
+# updated LocSolve
+LS.all.data <-   snaps %>% 
+    summarise(N = n(),
+            mean.distance = mean(LS.dist.UTM),
+            median.distance = median(LS.dist.UTM),
+            sd.distance = sd(LS.dist.UTM),
+            min.distance = min(LS.dist.UTM),
+            max.distance = max(LS.dist.UTM))   
+```     
+  
+      
+**Table 1. Summary statistics of distances estimated between the dolphin's *true* location and the tag's esimated location for all FastGPS snaps, as well as those deemed to be 'good' quality. Good quality snaps are considered to be those that were acquired using at least 5 satellites and that had residuals less than 35**
+```{r}
+snaps$Quality <- rep("Poor",nrow(snaps))
+for (i in 1:nrow(snaps)){
+  if(snaps$Good.Sats[i] > 6){
+    if(snaps$Residual[i] < 35){
+      snaps$Quality[i] <- "Good"
+    }
+  }
+}
+
+good.data <- snaps %>% 
+  filter(Quality == "Good") %>% 
+   summarise(N = n(),
+            mean.distance = mean(dist.UTM),
+            median.distance = median(dist.UTM),
+            sd.distance = sd(dist.UTM),
+            min.distance = min(dist.UTM),
+            max.distance = max(dist.UTM)) 
+
+# updated LocSolve
+snaps$LS.Quality <- rep("Poor",nrow(snaps))
+for (i in 1:nrow(snaps)){
+  if(snaps$SatsUsed[i] > 6){
+    if(snaps$LocSolve.Residual[i] < 35){
+      snaps$LS.Quality[i] <- "Good"
+    }
+  }
+}
+
+LS.good.data <- snaps %>% 
+  filter(LS.Quality == "Good") %>% 
+   summarise(N = n(),
+            mean.distance = mean(LS.dist.UTM),
+            median.distance = median(LS.dist.UTM),
+            sd.distance = sd(LS.dist.UTM),
+            min.distance = min(LS.dist.UTM),
+            max.distance = max(LS.dist.UTM)) 
+```   
+
+```{r}
+summ.d <- rbind(all.data,LS.all.data,good.data,LS.good.data)
+
+types <- c("All - Old LocSolve","All - New LocSolve","Good - Old LocSolve","Good - New LocSolve")
+ 
+summ <- cbind(types,summ.d); colnames(summ) <- c("Data","N","mean.distance","median.distance","sd.distance","min.distance","max.distance")
+
+summ %>% gt()
+```  
+  
+        
+          
+**Table 2. Summary statistics for good quality FastGPS location data by PTT ID**
+```{r}
+PTT <- snaps %>% 
+  filter(Quality == "Good") %>% 
+  group_by(PTT) %>% 
+   summarise(N = n(),
+            mean.distance = mean(dist.UTM),
+            median.distance = median(dist.UTM),
+            sd.distance = sd(dist.UTM),
+            min.distance = min(dist.UTM),
+            max.distance = max(dist.UTM)) 
+
+LS.PTT <- snaps %>% 
+  filter(LS.Quality == "Good") %>% 
+  group_by(PTT) %>% 
+   summarise(N = n(),
+            mean.distance = mean(LS.dist.UTM),
+            median.distance = median(LS.dist.UTM),
+            sd.distance = sd(LS.dist.UTM),
+            min.distance = min(LS.dist.UTM),
+            max.distance = max(LS.dist.UTM)) 
+
+
+sum.PTT <- rbind(PTT[1,],LS.PTT[1,],
+                 PTT[2,],LS.PTT[2,],
+                 PTT[3,],LS.PTT[3,])
+
+types <- c("Old","New",
+           "Old","New",
+           "Old","New")
+ 
+sumPTT <- cbind(types,sum.PTT); 
+colnames(sumPTT) <- c("LocSolve","PTT","N","mean.distance","median.distance","sd.distance","min.distance","max.distance")
+
+sumPTT %>% gt()
+```
+
+Tables 1 and 2 demonstrate that the new LocSolve processing system appeared to improve the accuracy of the FastGPS locations in reference to the dolphins true locations.  
+   
+The difference in the times reported by the FastGPS tag and those used from our focal follow observations and boat tracks to estimate dolphin locations affected the estimated distances between the dolphin and tag locations (Figure 1). 
+```{r}
+o.time.p <- snaps %>% 
+  filter(Quality == "Good") %>% 
+  ggplot() +
+  geom_point(aes(x=Tdiff.Tag.Track,y=dist.UTM,color=PTT)) +
+  scale_color_manual(values=c('lightblue3','lightcoral','darkseagreen3')) +
+  labs(y = 'Distance between tag & dolphin (m)',x='Difference between tag & follow times (sec)') +
+  ggtitle("Old LocSolve") +
+  theme(legend.position = "bottom") 
+
+ls.time.p <- snaps %>% 
+  filter(LS.Quality == "Good") %>% 
+  ggplot() +
+  geom_point(aes(x=Tdiff.Tag.Track,y=LS.dist.UTM,color=PTT)) +
+  scale_color_manual(values=c('lightblue3','lightcoral','darkseagreen3')) +
+  labs(y = '',x='Difference between tag & follow times (sec)') +
+  ggtitle("New LocSolve")+
+  theme(legend.position = "bottom")
+
+o.time.p + ls.time.p
+```      
+  
+**Figure 1. The relationship between the lag in time between the data transmitted by the tag (old and new LocSolve location processing) and that recorded during our focal follow observations to the distances estimated between the tag and true dolphin location. Note: only good quality FastGPS locations are included.**    
+   
+Figure 1 shows that for data from both LocSolve versions appear to be most accurate when we consider tag data that was received less than 10 seconds from an observed dolphin surfacing (Table 3). As the time between the dolphin surfacing and location transmitted increases, so does the distance between the estimated distance between the dolphin and the tag location. This is likely related to the dolphins movements between surfacings and the likelihood that the surfacing observed is the surfacing that was used to generate a location on the tag. 
+
+**Table 3: Summary statistics for good quality data that has a temporal difference between the reported tag time and the focal follow observation of less than 10 seconds**
+```{r}
+best <- snaps %>% 
+  filter(Quality == "Good") %>% 
+  filter(Tdiff.Tag.Track < 10) %>% 
+   summarise(N = n(),
+            mean.distance = mean(dist.UTM),
+            median.distance = median(dist.UTM),
+            sd.distance = sd(dist.UTM),
+            min.distance = min(dist.UTM),
+            max.distance = max(dist.UTM))
+
+
+LS.best <- snaps %>% 
+  filter(LS.Quality == "Good") %>% 
+  filter(Tdiff.Tag.Track < 10) %>% 
+   summarise(N = n(),
+            mean.distance = mean(LS.dist.UTM),
+            median.distance = median(LS.dist.UTM),
+            sd.distance = sd(LS.dist.UTM),
+            min.distance = min(LS.dist.UTM),
+            max.distance = max(LS.dist.UTM)) 
+
+
+sum.best <- rbind(best,LS.best)
+
+types <- c("Old","New")
+ 
+sum.best<- cbind(types,sum.best); 
+colnames(sum.best) <- c("LocSolve","N","mean.distance","median.distance","sd.distance","min.distance","max.distance")
+
+sum.best %>% gt()
+```
+  
+There were many 'poor' quality locations that actually seem to be quite accurate, particularly with the new LocSolve (Figures 2 and 3).Does our definition of 'good' quality hold with this new LocSolve or should we/can we relax it? 
+```{r}
+quality.p <- snaps %>% 
+  ggplot() +
+  geom_point(aes(x=Residual,y=dist.UTM,color=Quality,size=Good.Sats),alpha=0.6) +
+  scale_color_manual(values=c('lightblue3','lightcoral')) +
+  labs(y = 'Distance between tag & dolphin (m)')+
+  ggtitle("Old LocSolve")+ 
+  theme(legend.position = "none")
+
+LS.quality.p <- snaps %>% 
+  ggplot() +
+  geom_point(aes(x=LocSolve.Residual,y=LS.dist.UTM,color=LS.Quality,size=SatsUsed),alpha=0.6) +
+  scale_color_manual(values=c('lightblue3','lightcoral')) +
+  labs(y = '',x='Residual') +
+  guides(size = guide_legend(order = 2),col = guide_legend(order = 1))+
+  ggtitle("New LocSolve") +
+  labs(col = 'Quality',size="# Satellites")
+
+quality.p + LS.quality.p
+```  
+  
+**Figure 2. The relationship between the distances estimated between the tags and dolphins and the resdual of the tag location. The number of satellites is referencd by point size. Our definition of good and poor quality locations is referenced by point color.**
+
+```{r}
+hist.p <- snaps %>% 
+  ggplot(aes(x=dist.UTM,fill=Quality)) +
+  geom_histogram(color='black') +
+  scale_fill_manual(values=c('lightblue3','lightcoral')) +
+  labs(x = 'Distance between tag & dolphin (m)')+
+  ggtitle("Old LocSolve")+ 
+  theme(legend.position = "none")
+
+
+LS.hist.p <- snaps %>% 
+  ggplot(aes(x=LS.dist.UTM,fill=LS.Quality)) +
+  geom_histogram(color='black') +
+  scale_fill_manual(values=c('lightblue3','lightcoral')) +
+  labs(x = 'Distance between tag & dolphin (m)')+
+  ggtitle("New LocSolve") +
+  labs(fill = 'Quality')
+
+hist.p + LS.hist.p
+```  
+  
+**Figure 3. Histogram of distances estimated between the tags and dolphins with reference to good and poor quality locations.**
+
+The 8 poor tag location records that were highly unlikely or implausible (*e.g.*, points on land or far from where dolphins were known to be) before were 'fixed' with the new LocSolve processing, with 6 of the 8 points now being 'good' quality and reasonable estimates.  
+
+----------------------
+## FastGPS Analysis - Bench Test
+Before we deployed these tags, we performed a 'bench test' to make sure the tags were functioning properly, whereby we activated them and placed them on a boat behind our offices for several hours. We can use the results of this test to compare how the different LocSolve versions performed in estimating the tag's true location (27.335677, -82.576490). For this comparison, I excluded all poor quality data ($\le$ 4 satellites used and residuals > 35) and calculated the distance between the tag's true location and respective estimated locations using the same methods as described above. 
+
+
+```{r}
+# Data Setup ------------------------
+bench <- read_csv(here::here('GPS Tag/Manuscipt/Data/BenchTestData.csv'))
+
+true.lat <- 27.335677
+true.lon <- -82.576490
+
+true <- data.frame(cbind(true.lat,true.lon))
+```
+
+
+```{r}
+#Project lat/long to WGS and UTM so I can make measurments in km/m 
+# Did not inlucde WPT lat/long or Tag track lat/lon bc will not use these - they were backup points in the field in case track disappeared
+
+points_crs <- crs("+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
+
+# Original Tag locations
+original <- bench %>% 
+  filter(Type == "FastGPS") %>% 
+  filter(!is.na(Latitude))
+
+spat.t <- SpatialPointsDataFrame(original[c("Latitude","Longitude")],  original, proj4string = points_crs) 
+
+original$Tag.Lat.WGS <- spat.t @data$Latitude
+original$Tag.Lon.WGS <- spat.t @data$Longitude
+
+utm.t <- spTransform(spat.t , crs("+init=epsg:26917"))
+utm.t.coords <- data.frame(utm.t@coords)
+
+original$Tag.Lat.UTM <- utm.t.coords$Latitude
+original$Tag.Lon.UTM <- utm.t.coords$Longitude
+
+# LocSolve Tag locatinos
+LocSolve <- bench %>% 
+    filter(Type == "FastGPS") %>% 
+  filter(!is.na(Lat))
+
+spat.t <- SpatialPointsDataFrame(LocSolve[c("Lat","Lon")],  LocSolve, proj4string = points_crs) 
+
+LocSolve$LS.Tag.Lat.WGS <- spat.t @data$Lat
+LocSolve$LS.Tag.Lon.WGS <- spat.t @data$Lon
+
+utm.t <- spTransform(spat.t , crs("+init=epsg:26917"))
+utm.t.coords <- data.frame(utm.t@coords)
+
+LocSolve$LS.Tag.Lat.UTM <- utm.t.coords$Lat
+LocSolve$LS.Tag.Lon.UTM <- utm.t.coords$Lon
+
+# Bench Test locatinos
+spat.f <- SpatialPointsDataFrame(true[c("true.lat","true.lon")],  true, proj4string = points_crs)
+
+true$True.Lat.WGS <- spat.f@data$true.lat
+true$True.Lon.WGS <- spat.f@data$true.lon
+
+utm.f <- spTransform(spat.f , crs("+init=epsg:26917"))
+utm.f.coords <- data.frame(utm.f@coords)
+
+true$True.Lat.UTM <- utm.f.coords$true.lat
+true$True.Lon.UTM <- utm.f.coords$true.lon
+```
+
+```{r}
+# Uses pointDistance function from raster package
+# Original
+original$dist.UTM <- c(rep(NA,nrow(original)))
+for (i in 1:nrow(original)){
+  original$dist.UTM[i] <- pointDistance(
+                      c(original$Tag.Lon.UTM[i],original$Tag.Lat.UTM[i]),
+                      c(true$True.Lon.UTM,true$True.Lat.UTM),
+                      lonlat=F)
+}
+
+
+original$dist.WGS <- c(rep(NA,nrow(original)))
+for (i in 1:nrow(original)){
+  original$dist.WGS[i] <- pointDistance(
+                      c(original$Tag.Lon.WGS[i],original$Tag.Lat.WGS[i]),
+                      c(true$True.Lon.WGS,true$True.Lat.WGS),
+                      lonlat=T)
+}
+
+# LocSolve
+LocSolve$dist.UTM <- c(rep(NA,nrow(LocSolve)))
+for (i in 1:nrow(LocSolve)){
+  LocSolve$dist.UTM[i] <- pointDistance(
+                      c(LocSolve$LS.Tag.Lon.UTM[i],LocSolve$LS.Tag.Lat.UTM[i]),
+                      c(true$True.Lon.UTM,true$True.Lat.UTM),
+                      lonlat=F)
+}
+
+
+LocSolve$dist.WGS <- c(rep(NA,nrow(LocSolve)))
+for (i in 1:nrow(LocSolve)){
+  LocSolve$dist.WGS[i] <- pointDistance(
+                      c(LocSolve$LS.Tag.Lon.WGS[i],LocSolve$LS.Tag.Lat.WGS[i]),
+                      c(true$True.Lon.WGS,true$True.Lat.WGS),
+                      lonlat=T)
+}
+```
+
+
+**Table 4. Summary statistics for good quality data from the bench test using old and new LocSolve processing.**
+```{r}
+# Original Fastloc
+original$Good.Sats <- original$Satellites - original$`Bad Sats`
+original$Quality <- rep("Poor",nrow(original))
+for (i in 1:nrow(original)){
+  if(original$Good.Sats[i] > 4){
+    if(original$Residual[i] < 35){
+      original$Quality[i] <- "Good"
+    }
+  }
+}
+
+o.r <- original %>% 
+  filter(Quality == "Good") %>% 
+    summarise(n(),
+            mean.dist.UTM=mean(dist.UTM),
+            median.dist.UTM=median(dist.UTM),
+            sd.dist.UTM=sd(dist.UTM),
+            min.dist.UTM=min(dist.UTM),
+            max.dist.UTM=max(dist.UTM))
+
+# LocSovlve Processing
+LocSolve$Quality <- rep("Poor",nrow(LocSolve))
+for (i in 1:nrow(LocSolve)){
+  if(LocSolve$SatsUsed[i] > 4){
+    if(LocSolve$LocSolve.Residual[i] < 35){
+      LocSolve$Quality[i] <- "Good"
+    }
+  }
+}
+
+
+ls.r <- LocSolve %>% 
+  filter(Quality == "Good") %>% 
+      summarise(n(),
+            mean.dist.UTM=mean(dist.UTM),
+            median.dist.UTM=median(dist.UTM),
+            sd.dist.UTM=sd(dist.UTM),
+            min.dist.UTM=min(dist.UTM),
+            max.dist.UTM=max(dist.UTM))
+
+
+sum.bench <- rbind(o.r,ls.r)
+
+types <- c("Old","New")
+ 
+bench.results <- cbind(types,sum.bench)
+colnames(bench.results) <- c("LocSolve","N","mean.distance","median.distance","sd.distance","min.distance","max.distance")
+
+bench.results %>% gt()
+```
+
+
+```{r}
+o.b.p.ll <- original %>% 
+    filter(Quality == "Good") %>% 
+  ggplot() +
+  geom_point(aes(x=Lon,y=Lat,size=Residual,color=as.factor(Good.Sats)),alpha=0.6) +
+  geom_point(data=true,aes(x=true.lon,y=true.lat),color='red',size=3) +
+  ylim(27.3349,27.3361) +
+  xlim(-82.5783,-82.5755) +
+  ggtitle("Old LocSolve")+ 
+  theme(legend.position = "none")
+
+LS.b.p.ll <- LocSolve %>% 
+    filter(Quality == "Good") %>% 
+  ggplot() +
+  geom_point(aes(x=Lon,y=Lat,size=LocSolve.Residual,color=as.factor(SatsUsed)),alpha=0.6) +
+  geom_point(data=true,aes(x=true.lon,y=true.lat),color='red',size=3) +
+  ylim(27.3349,27.3361) +
+  xlim(-82.5783,-82.5755) +
+  ggtitle("New LocSolve") +
+  labs(col = '# Satellites',size="Residual")
+
+o.b.p.ll + LS.b.p.ll 
+```
+
+**Figure 4. The true location of the tag (red circle) with the 'good' location estimates from the old and new LocSolve processing (triangles) **
+
+
+```{r}
+o.b.p <- original %>% 
+  ggplot() +
+  geom_point(aes(x=Residual,y=dist.UTM,color=Quality,size=Good.Sats),alpha=0.6) +
+  scale_color_manual(values=c('lightblue3','lightcoral')) +
+  #labs(y = 'Distance between tag & location processing estimates (m)')+
+  ylab(expression(atop("Distance between tag & location", paste("processing estimates (m)")))) +
+  ylim(0,600) +
+  ggtitle("Old LocSolve")+ 
+  theme(legend.position = "none")
+
+LS.b.p <- LocSolve %>% 
+  ggplot() +
+  geom_point(aes(x=LocSolve.Residual,y=dist.UTM,color=Quality,size=SatsUsed),alpha=0.6) +
+  scale_color_manual(values=c('lightblue3','lightcoral')) +
+  labs(y = '',x='Residual') +
+  guides(size = guide_legend(order = 2),col = guide_legend(order = 1))+
+  ylim(0,600) +
+  ggtitle("New LocSolve") +
+  labs(col = 'Quality',size="# Satellites")
+
+o.b.p + LS.b.p 
+```
+**Figure 5. The relationship between the distances estimated between the tag's true location and the resdual of the tag location for each method. The number of satellites is referencd by point size. Good and poor quality locations are referenced by point color.**
+
+```{r}
+b.hist.p <- original %>% 
+  ggplot(aes(x=dist.UTM,fill=Quality)) +
+  geom_histogram(color='black') +
+  scale_fill_manual(values=c('lightblue3','lightcoral')) +
+  xlab(expression(atop("Distance between true &", paste("estimated locations (m)")))) +
+  xlim(0,650) +
+  ylim(0,30) +
+  ggtitle("Old LocSolve")+ 
+  theme(legend.position = "none")
+
+
+b.LS.hist.p <- LocSolve %>% 
+  ggplot(aes(x=dist.UTM,fill=Quality)) +
+  geom_histogram(color='black') +
+  scale_fill_manual(values=c('lightblue3','lightcoral')) +
+  xlab(expression(atop("Distance between true &", paste("estimated locations (m)")))) +
+  ggtitle("New LocSolve") +
+  xlim(0,650) +
+  ylim(0,30) +
+  labs(fill = 'Quality')
+
+b.hist.p + b.LS.hist.p
+``` 
+**Figure 6. Histogram of distances estimated between the tags and dolphins with reference to good and poor quality locations.**
+
+Interestingly, the data from the old LocSolve appears to be more accurate and precise than the data derived using the new LocSolve for this bench test. Is it possible that the effect of buildings is more influential with the new LocSolve than the previous version? If so, perhaps we should scrap this test from our manuscript... 
+
+
+----------------------
+## Argos - Field Tests
+
+Argos locations were analysed the same was as the FastGPS locations. I did not do any extra processing of these locations yet - for now I just used the locations provided in the outputs from the data portal. We had 25 Argos 'snaps' (*i.e.*, matching records) within 2 minutes of the focal follow observations (179062 = 8, 179063 = 13, 179064 = 4). Five distances of dolphin locations were estimated with a range finder, all others were estimated by eye.
+```{r}
+# Data Setup ------------------------
+snaps <- read_csv(here::here('GPS Tag/Manuscipt/Data/Argos_snaps.csv'))
+```
+
+```{r}
+#Project lat/long to WGS and UTM so I can make measurments in km/m 
+# Did not inlucde WPT lat/long or Tag track lat/lon bc will not use these - they were backup points in the field in case track disappeared
+
+points_crs <- crs("+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
+
+# Tag locations
+spat.t <- SpatialPointsDataFrame(snaps[c("Latitude","Longitude")],  snaps, proj4string = points_crs) 
+
+snaps$Tag.Lat.WGS <- spat.t @data$Latitude
+snaps$Tag.Lon.WGS <- spat.t @data$Longitude
+
+utm.t <- spTransform(spat.t , crs("+init=epsg:26917"))
+utm.t.coords <- data.frame(utm.t@coords)
+
+snaps$Tag.Lat.UTM <- utm.t.coords$Latitude
+snaps$Tag.Lon.UTM <- utm.t.coords$Longitude
+
+# Follow Boat locatinos
+spat.f <- SpatialPointsDataFrame(snaps[c("Track.Lat","Track.Lon")],  snaps, proj4string = points_crs)
+
+snaps$Track.Lat.WGS <- spat.f@data$Track.Lat
+snaps$Track.Lon.WGS <- spat.f@data$Track.Lon
+
+utm.f <- spTransform(spat.f , crs("+init=epsg:26917"))
+utm.f.coords <- data.frame(utm.f@coords)
+
+snaps$Track.Lat.UTM <- utm.f.coords$Track.Lat
+snaps$Track.Lon.UTM <- utm.f.coords$Track.Lon
+```
+```{r}
+# Calulate true dolphin location based on boat track and observed range and bearing
+# uses destPoint function from geosphere package
+p <- cbind(snaps$Track.Lon,snaps$Track.Lat)
+Dolphin.locs <- destPoint(p,snaps$Bearing.HH,snaps$Distance)
+snaps$Dolphin.Lon <- Dolphin.locs[,1]
+snaps$Dolphin.Lat <- Dolphin.locs[,2]
+
+# Project lat/long to UTM so I can make measurements in km/m -
+spat.d <- SpatialPointsDataFrame(snaps[c("Dolphin.Lat","Dolphin.Lon")],  snaps, proj4string = points_crs) 
+
+snaps$Dolphin.Lat.WGS <- spat.d@data$Dolphin.Lat
+snaps$Dolphin.Lon.WGS <- spat.d@data$Dolphin.Lon
+
+utm.d <- spTransform(spat.d, crs("+init=epsg:26917"))
+utm.d.coords <- data.frame(utm.d@coords)
+
+snaps$Dolphin.Lat.UTM <- utm.d.coords$Dolphin.Lat
+snaps$Dolphin.Lon.UTM <- utm.d.coords$Dolphin.Lon
+```
+
+```{r}
+# Uses pointDistance function from raster package
+snaps$dist.UTM <- c(rep(NA,nrow(snaps)))
+for (i in 1:nrow(snaps)){
+  snaps$dist.UTM[i] <- pointDistance(
+                      c(snaps$Tag.Lon.UTM[i],snaps$Tag.Lat.UTM[i]),
+                      c(snaps$Dolphin.Lon.UTM[i],snaps$Dolphin.Lat.UTM[i]),
+                      lonlat=F)
+}
+
+snaps$dist.WGS <- c(rep(NA,nrow(snaps)))
+for (i in 1:nrow(snaps)){
+  snaps$dist.WGS[i] <- pointDistance(
+                      c(snaps$Tag.Lon.WGS[i],snaps$Tag.Lat.WGS[i]),
+                      c(snaps$Dolphin.Lon.WGS[i],snaps$Dolphin.Lat.WGS[i]),
+                      lonlat=T)
+}
+
+snaps$Snap <- c(seq(1,8,1),seq(1,13,1),seq(1,4,1))
+snaps$Quality <- factor(snaps$LocationQuality,levels = c("3","2","1","0","A","B"))
+```
+
+**Table 5. Summary statistics of distances for all Argos snaps**
+```{r}
+snaps %>% 
+    group_by(Quality) %>% 
+    summarise(N = n(),
+            mean.distance=mean(dist.UTM),
+            median.distance=median(dist.UTM),
+            sd.distance=sd(dist.UTM),
+            min.distance=min(dist.UTM),
+            max.distance=max(dist.UTM)) %>% 
+    gt()
+```
+
+**Table 6. Summary statistics of distances for all Argos snaps broken down by PTT ID for LCs: 3, 2, and 1**
+```{r}
+snaps %>% 
+    filter(Quality == 3 | Quality == 2 | Quality == 1) %>%   
+    group_by(Ptt,Quality) %>% 
+    summarise(N = n(),
+            mean.distance=mean(dist.UTM),
+            median.distance=median(dist.UTM),
+            sd.distance=sd(dist.UTM),
+            min.distance=min(dist.UTM),
+            max.distance=max(dist.UTM)) %>% 
+    gt()
+```
+
+
+The distances estimated between the dolphins 'true' location and the location generated by Argos are much larger than the FastGPS locations for all location classes (as we would expect).
+
+The difference in the times reported by Argos and those used from our focal follow observations and boat tracks to estimate dolphin locations did not affect the estimated distances between the dolphin and tag locations as significantly as for the FastGPS estimates (Figure 7). This is probably related to how the Argos location is created during a pass and how the timestamp reported by Argos for each location is dependent on the length of the pass (which can be > 10 min) (Matt - please correct me if I am wrong).
+```{r}
+snaps$Tdiff.Tag.Track <- snaps$Tdiff.Boat.Tag
+snaps$PTT <- as.factor(snaps$Ptt)
+
+snaps %>% 
+  filter(Quality == 3 | Quality == 2 | Quality == 1) %>%   
+  ggplot() +
+  geom_point(aes(x=Tdiff.Tag.Track,y=dist.UTM,color=PTT)) +
+  scale_color_manual(values=c('lightblue3','lightcoral','darkseagreen3')) +
+  labs(y = 'Distance between tag & dolphin (m)',x='Difference between tag & follow times (sec)') +
+  theme(legend.position = "bottom") 
+```  
+**Figure 7. The relationship between the lag in time between the data transmitted by the tag and that recorded during our focal follow observations to the distances estimated between the tag and true dolphin location. Note: only Argos LCs: 3, 2, and 1 are included.**  
+
+If desired, I can run these data through crawl or foieGras to interpolate each tag's movement path and predict locations that are close to our focal follow observation times. 
+
+----------------------
+## Argos - Bench Test
+
+```{r}
+# Data Setup ------------------------
+bench <- read_csv(here::here('GPS Tag/Manuscipt/Data/BenchTestData.csv'))
+
+true.lat <- 27.335677
+true.lon <- -82.576490
+
+true <- data.frame(cbind(true.lat,true.lon))
+```
+
+```{r}
+#Project lat/long to WGS and UTM so I can make measurments in km/m 
+# Did not inlucde WPT lat/long or Tag track lat/lon bc will not use these - they were backup points in the field in case track disappeared
+
+points_crs <- crs("+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
+
+# Original Tag locations
+bench <- bench %>% 
+  filter(Type == "Argos") 
+
+spat.t <- SpatialPointsDataFrame(bench[c("Latitude","Longitude")],  bench, proj4string = points_crs) 
+
+bench$Tag.Lat.WGS <- spat.t @data$Latitude
+bench$Tag.Lon.WGS <- spat.t @data$Longitude
+
+utm.t <- spTransform(spat.t , crs("+init=epsg:26917"))
+utm.t.coords <- data.frame(utm.t@coords)
+
+bench$Tag.Lat.UTM <- utm.t.coords$Latitude
+bench$Tag.Lon.UTM <- utm.t.coords$Longitude
+
+# Bench Test locatinos
+spat.f <- SpatialPointsDataFrame(true[c("true.lat","true.lon")],  true, proj4string = points_crs)
+
+true$True.Lat.WGS <- spat.f@data$true.lat
+true$True.Lon.WGS <- spat.f@data$true.lon
+
+utm.f <- spTransform(spat.f , crs("+init=epsg:26917"))
+utm.f.coords <- data.frame(utm.f@coords)
+
+true$True.Lat.UTM <- utm.f.coords$true.lat
+true$True.Lon.UTM <- utm.f.coords$true.lon
+```
+
+```{r}
+# Uses pointDistance function from raster package
+# Original
+bench$dist.UTM <- c(rep(NA,nrow(bench)))
+for (i in 1:nrow(bench)){
+  bench$dist.UTM[i] <- pointDistance(
+                      c(bench$Tag.Lon.UTM[i],bench$Tag.Lat.UTM[i]),
+                      c(true$True.Lon.UTM,true$True.Lat.UTM),
+                      lonlat=F)
+}
+
+
+bench$dist.WGS <- c(rep(NA,nrow(bench)))
+for (i in 1:nrow(bench)){
+  bench$dist.WGS[i] <- pointDistance(
+                      c(bench$Tag.Lon.WGS[i],bench$Tag.Lat.WGS[i]),
+                      c(true$True.Lon.WGS,true$True.Lat.WGS),
+                      lonlat=T)
+}
+```
+I calculated the distances between the true location of the tag during the bench tag with the tag's estimated location based on Argos estimates using the same methods described above. Estimated error for Argos location classes are as follows:
+
+LC 3: < 250m  
+LC 2: 250m < < 500m  
+LC 1: 500m < < 1500m  
+LC 0: > 1500m  
+LC A: unbounded  
+LC B: unbounded  
+
+Table 7 shows that our estimated distances are just outside the estimated errors suggested by Argos service for each LC.
+
+**Table 7. Summary statistics of distances for all Argos snaps for the bench test**
+```{r}
+bench$Quality <- factor(bench$Quality,levels = c("3","2","1","0","A","B"))
+
+bench %>% 
+    group_by(Quality) %>% 
+    summarise(N = n(),
+            mean.distance=mean(dist.UTM),
+            median.distance=median(dist.UTM),
+            sd.distance=sd(dist.UTM),
+            min.distance=min(dist.UTM),
+            max.distance=max(dist.UTM)) %>% 
+    gt()
+```
+
+
+-----
+##Things to decide for the manuscript:  
+- Do we include results from both location processing techniques (old and new), or just one?  
+- Do we include comparisons with Argos locations as well, or just focus on the Fastloc locations?   
+- Do we include the bench test results?  
+- Decide Target Journal: Methods in Ecology and Evolution (possibly good followup to Dujon paper depending on what we decide to include), Movement Ecology, Animal Biotelemetry, or other  

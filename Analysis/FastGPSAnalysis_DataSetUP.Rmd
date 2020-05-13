@@ -1,0 +1,442 @@
+---
+title: Ground-truthing a newly designed GPS tag for inferring small cetacean locations
+  and behaviors
+author: "Reny Tyson Moore, rtysonmoore@mote.org"
+date: "April 7, 2019"
+output:
+  html_document:
+    df_print: paged
+---
+
+**Introduction**
+One of the key things that scientists want to discover about the animals they study is “where they go.”  One way to achieve this is to attach a device, such as a tag, to an animal that can record its location.  Historically, this has been done with either satellite or GPS technology (similar to location services on a smart-phone).  While satellite-linked tags have been available for use with marine mammals for several decades, tags that incorporate GPS technology have been hard to develop for these animals because the GPS signal requires exposure at the surface for longer periods of time than an animal typically breathes.  Location data from GPS tags is more precise than location data from satellite tags so the ability to incorporate GPS into tags would open new doors for research opportunities on small cetaceans, such as bottlenose dolphins, pilot whales, and false killer whales.  FastLoc® Location Technology was recently developed to deal with this problem, and is able to obtain GPS data in fractions of a second.  This technology thus represents an exciting development that may allow researchers to use the power of GPS for tracking dolphins and porpoises in a more accurate and precise way, for the very first time.  
+
+The incorporation of Fastloc GPS into biologging tags has the potential to greatly enhance the accuracty of location data of tagged species. Here, we test the performance and accuracy of a fin-mounted FastLoc® GPS tag (SPLASH10-F; developed by Wildlife Computers, Redmond, Washington, USA) deployed on resident bottlenose dolpins (*Tursiops trunactus*) Sarasota Bay, Florida. This region is home to the worlds loggest running study of a wild bottlnose dolphin population, This our natural laboratory and ability to closely monitor well-known individual dolphins makes us uniquely positioned to be able to provide feedback on the function and performance of these newly designed GPS tags. 
+
+In this study, we deployed SPOT-F-368A, single-point Finmount tags (Wildlife Computers, Redmond, WA, USA) on three residents Sarasota Bay dolphins during a health asseessment. Tagged individuals were montiored to 1) assess the health and behavior of the dolphins post-tagging and release; 2) monitor the animals and examine the potential for the tags to be entangled in gear such as fishing line or trash; and 3) assess the accuracy of the data provided by the tags.  
+
+#######################################################
+Steps:
+- Compare accuracy of GPS locations during sets - all sets are too close (see 'GPSTagAnalysis_old' file)
+- Compare accuracy of GPS locations versus focal follow data using the available snapshots (make a table for this too)
+- Compare accuracy of GPS locations versus Argos locations
+- Collate all pictures of tagged animals during follow-up monitoring
+- Examine biofouling versus signal transmissions
+- Examine tag breakage
+- General plots about the tag data - look at GPSTagAnlaysis from last year for ideas (like number of transmissions/hr for argos/fastloc)
+
+***Need to check follow data and make sure everything was less than 2 min (or was there a bigger threshold I used?)***
+
+```{r,echo=F,message=F,warning=F}
+# Clear work space ------------------------
+rm(list=ls())
+
+# Load libraries ------------------------
+library(tidyverse)
+library(lubridate)
+library(sf)
+library(raster)
+library(geosphere)
+library(here)
+library(knitr)
+library(leaflet)
+```
+
+
+```{r global_options, echo=F, include=FALSE,warning=F,message=F}
+knitr::opts_chunk$set(fig.width=12, fig.height=8, fig.path='Figs/',
+                      echo=FALSE, warning=FALSE, message=FALSE)
+
+opts_knit$set(root.dir = here::here("GPS Tag/Manuscipt/Analysis"))
+
+options(scipen=999,digits=8)
+```
+
+
+```{r}
+# Data Setup ------------------------
+# snaps.179062 <- read_csv(here::here('GPS Tag/Manuscipt/Data/179062-1-FastGPS_withFollow.csv'))[,c(1:30)]
+# snaps.179063 <- read_csv(here::here('GPS Tag/Manuscipt/Data/179063-1-FastGPS_withFollow.csv'))[,c(1:30)]
+# snaps.179064 <- read_csv(here::here('GPS Tag/Manuscipt/Data/179064-1-FastGPS_withFollow.csv'))[,c(1:30)]
+# snaps <- rbind(snaps.179062,snaps.179063,snaps.179064)
+# 
+# snaps <- snaps %>% 
+#   filter(Snap==1) 
+
+#write.csv(snaps,here('GPS Tag/Manuscipt/Data/snaps_updated.csv'))
+
+# manually add track data
+snaps <- read_csv(here::here('GPS Tag/Manuscipt/Data/snaps_updated_withNewLocSolve.csv'))
+snaps$Day <- dmy(snaps$Day)
+snaps <- snaps %>% 
+  filter(!is.na(Longitude))
+```
+
+59 records (used to be 56)
+5 FastGPS records that had matched follow data did not have latitude/longitude data available
+leaves 54 snaps: 190762 = 13, 179063 = 21, 179064 = 20 (Old: leaves 51 snaps: 190762 = 13, 179063 = 21, 179064 = 17)
+
+
+
+```{r}
+#Project lat/long to WGS and UTM so I can make measurments in km/m 
+# Did not inlucde WPT lat/long or Tag track lat/lon bc will not use these - they were backup points in the field in case track disappeared
+
+points_crs <- crs("+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
+
+# Original Tag locations
+spat.t <- SpatialPointsDataFrame(snaps[c("Latitude","Longitude")],  snaps, proj4string = points_crs) 
+
+snaps$Tag.Lat.WGS <- spat.t @data$Latitude
+snaps$Tag.Lon.WGS <- spat.t @data$Longitude
+
+utm.t <- spTransform(spat.t , crs("+init=epsg:26917"))
+utm.t.coords <- data.frame(utm.t@coords)
+
+snaps$Tag.Lat.UTM <- utm.t.coords$Latitude
+snaps$Tag.Lon.UTM <- utm.t.coords$Longitude
+
+# LocSolve Tag locations
+spat.l <- SpatialPointsDataFrame(snaps[c("LocSolve.Lat","LocSolve.Lon")],  snaps, proj4string = points_crs) 
+
+snaps$LS.Tag.Lat.WGS <- spat.t @data$LocSolve.Lat
+snaps$LS.Tag.Lon.WGS <- spat.t @data$LocSolve.Lon
+
+utm.l <- spTransform(spat.l , crs("+init=epsg:26917"))
+utm.l.coords <- data.frame(utm.l@coords)
+
+snaps$LS.Tag.Lat.UTM <- utm.l.coords$LocSolve.Lat
+snaps$LS.Tag.Lon.UTM <- utm.l.coords$LocSolve.Lon
+
+# Follow Boat locatinos
+spat.f <- SpatialPointsDataFrame(snaps[c("Track.Lat","Track.Lon")],  snaps, proj4string = points_crs)
+
+snaps$Track.Lat.WGS <- spat.f@data$Track.Lat
+snaps$Track.Lon.WGS <- spat.f@data$Track.Lon
+
+utm.f <- spTransform(spat.f , crs("+init=epsg:26917"))
+utm.f.coords <- data.frame(utm.f@coords)
+
+snaps$Track.Lat.UTM <- utm.f.coords$Track.Lat
+snaps$Track.Lon.UTM <- utm.f.coords$Track.Lon
+
+
+```
+
+Data were projected to NAD 83 UTM 17N for measurements.
+
+```{r}
+# Bring in track data and combine 
+
+# Bring in track files
+track.files <- list.files(here::here('GPS Tag/Manuscipt/Data/Tracks'))
+points_crs <- crs("+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
+
+project.gps <- function(x){
+  track.file <- read_csv(here::here(paste('GPS Tag/Manuscipt/Data/Tracks'),track.files[x]))
+  
+  # Project lat/long to WGS
+  track.spat <- SpatialPointsDataFrame(track.file[c("x_proj","x_proj")], track.file, proj4string = points_crs)
+  track.file$Long.WGS <- track.spat@data$x_proj
+  track.file$Lat.WGS <- track.spat@data$y_proj
+  
+  track.file$datetime.GMT <-  as.POSIXct(track.file$ltime,"%Y/%m/%d %H:%M:%OS",tz="UTC")
+  
+  return(track.file)
+}
+
+t_05_naia    <- project.gps(1)
+t_06_bob     <- project.gps(2)
+t_06_naia    <- project.gps(3)
+t_10_fregata <- project.gps(4)
+t_11_fregata <- project.gps(5)
+t_12_fregata <- project.gps(6)
+t_13_fregata <- project.gps(7)
+t_14_fregata <- project.gps(8)
+
+
+n5  <- t_05_naia %>% dplyr::select(Lat.WGS,Long.WGS,datetime.GMT); colnames(n5) <- c('lat','lon','datetime')
+b6  <- t_06_bob  %>% dplyr::select(Lat.WGS,Long.WGS,datetime.GMT); colnames(b6) <- c('lat','lon','datetime')
+n6  <- t_06_naia %>% dplyr::select(Lat.WGS,Long.WGS,datetime.GMT); colnames(n6) <- c('lat','lon','datetime')
+f10 <- t_10_fregata %>% dplyr::select(Lat.WGS,Long.WGS,datetime.GMT); colnames(f10) <- c('lat','lon','datetime')
+f11 <- t_11_fregata %>% dplyr::select(Lat.WGS,Long.WGS,datetime.GMT); colnames(f11) <- c('lat','lon','datetime')
+f12 <- t_12_fregata %>% dplyr::select(Lat.WGS,Long.WGS,datetime.GMT); colnames(f12) <- c('lat','lon','datetime')
+f13 <- t_13_fregata %>% dplyr::select(Lat.WGS,Long.WGS,datetime.GMT); colnames(f13) <- c('lat','lon','datetime')
+f14 <- t_14_fregata %>% dplyr::select(Lat.WGS,Long.WGS,datetime.GMT); colnames(f14) <- c('lat','lon','datetime')
+
+track <- rbind(n5,b6,n6,f10,f11,f12,f13,f14)
+track$Date <- as.Date(track$datetime)
+track$Time <- hms::as.hms(track$datetime)
+
+save(track,file="tracks.RData")
+```
+
+
+```{r}
+# Bring in Saraosta Shapefile
+sar <- st_read("C:/Users/rtyson/Dropbox/Projects/GIS/Land/Sarasota_region.shp")
+
+# Create plot
+study.area <- ggplot(data = sar) +
+    geom_sf() +
+    coord_sf(xlim = c(-82.79, -82.3), ylim = c(27.05, 27.6), expand = FALSE) +
+    ylab(label='Latidude')+
+    xlab(label='Longitude') +
+    theme_bw()  +
+    ggspatial::annotation_scale(location = "tr", width_hint = 0.4) 
+```
+
+
+Figure out true dolphin location
+Need Follow Time and boat track time
+Take boat track time. Then range and bearing to calclate. 
+```{r}
+# Calulate true dolphin location based on boat track and observed range and bearing
+# uses destPoint function from geosphere package
+p <- cbind(snaps$Track.Lon,snaps$Track.Lat)
+Dolphin.locs <- destPoint(p,snaps$Bearing.HH,snaps$Distance)
+snaps$Dolphin.Lon <- Dolphin.locs[,1]
+snaps$Dolphin.Lat <- Dolphin.locs[,2]
+
+# Project lat/long to UTM so I can make measurements in km/m -
+spat.d <- SpatialPointsDataFrame(snaps[c("Dolphin.Lat","Dolphin.Lon")],  snaps, proj4string = points_crs) 
+
+snaps$Dolphin.Lat.WGS <- spat.d@data$Dolphin.Lat
+snaps$Dolphin.Lon.WGS <- spat.d@data$Dolphin.Lon
+
+utm.d <- spTransform(spat.d, crs("+init=epsg:26917"))
+utm.d.coords <- data.frame(utm.d@coords)
+
+snaps$Dolphin.Lat.UTM <- utm.d.coords$Dolphin.Lat
+snaps$Dolphin.Lon.UTM <- utm.d.coords$Dolphin.Lon
+
+```
+
+Now calculate distance between tag locations and dolphin locations
+```{r}
+# Uses pointDistance function from raster package
+snaps$dist.UTM <- c(rep(NA,nrow(snaps)))
+for (i in 1:nrow(snaps)){
+  snaps$dist.UTM[i] <- pointDistance(
+                      c(snaps$Tag.Lon.UTM[i],snaps$Tag.Lat.UTM[i]),
+                      c(snaps$Dolphin.Lon.UTM[i],snaps$Dolphin.Lat.UTM[i]),
+                      lonlat=F)
+}
+
+snaps$dist.WGS <- c(rep(NA,nrow(snaps)))
+for (i in 1:nrow(snaps)){
+  snaps$dist.WGS[i] <- pointDistance(
+                      c(snaps$Tag.Lon.WGS[i],snaps$Tag.Lat.WGS[i]),
+                      c(snaps$Dolphin.Lon.WGS[i],snaps$Dolphin.Lat.WGS[i]),
+                      lonlat=T)
+}
+
+
+# with new LocSolve Processing
+snaps$LS.dist.UTM <- c(rep(NA,nrow(snaps)))
+for (i in 1:nrow(snaps)){
+  snaps$LS.dist.UTM[i] <- pointDistance(
+                      c(snaps$LS.Tag.Lon.UTM[i],snaps$LS.Tag.Lat.UTM[i]),
+                      c(snaps$Dolphin.Lon.UTM[i],snaps$Dolphin.Lat.UTM[i]),
+                      lonlat=F)
+}
+
+snaps$LS.dist.WGS <- c(rep(NA,nrow(snaps)))
+for (i in 1:nrow(snaps)){
+  snaps$LS.dist.WGS[i] <- pointDistance(
+                      c(snaps$LS.Tag.Lon.WGS[i],snaps$LS.Tag.Lat.WGS[i]),
+                      c(snaps$Dolphin.Lon.WGS[i],snaps$Dolphin.Lat.WGS[i]),
+                      lonlat=T)
+}
+
+snaps$Snap <- c(seq(1,13,1),seq(1,21,1),seq(1,20,1))
+
+save(snaps,file='snaps.RData')
+
+
+
+FastGPS_data <- list(snaps,track)
+save(FastGPS_data,file='FastGPS_data_updated.RData')
+```
+
+
+
+
+
+##############################################################
+every thing below needs to be moved to anaylss
+
+
+
+```{r}
+snaps %>% 
+  group_by(Type,Quality) %>% 
+  summarise(n(),
+            mean.dist.UTM=mean(dist.UTM),mean.dist.WGS=mean(dist.WGS),
+            median.dist.UTM=median(dist.UTM),median.dist.WGS=median(dist.WGS),
+            sd.dist.UTM=sd(dist.UTM),sd.dist.WGS=sd(dist.WGS),
+            min.dist.UTM=min(dist.UTM),min.dist.WGS=min(dist.WGS),
+            max.dist.UTM=max(dist.UTM),max.dist.WGS=max(dist.WGS)
+            )
+
+snaps %>% 
+  summarise(n(),
+            mean.dist.UTM=mean(dist.UTM),
+            median.dist.UTM=median(dist.UTM),
+            sd.dist.UTM=sd(dist.UTM),
+            min.dist.UTM=min(dist.UTM),
+            max.dist.UTM=max(dist.UTM))
+```
+
+good quality vs bad quality
+```{r}
+good <- snaps %>% 
+  filter(Good.Sats > 4) %>% 
+  filter(Residual < 35) %>% 
+  summarise(n(),
+            mean.dist.UTM=mean(dist.UTM),
+            median.dist.UTM=median(dist.UTM),
+            sd.dist.UTM=sd(dist.UTM),
+            min.dist.UTM=min(dist.UTM),
+            max.dist.UTM=max(dist.UTM))
+  
+```
+
+
+
+histograms of distances
+```{r}
+snaps %>% 
+  ggplot(aes(x=dist.UTM)) +
+  geom_histogram(color='black',fill="white") +
+  facet_grid(cols=vars(PTT),rows=vars(Type),scale="free_x")
+
+snaps %>% 
+  ggplot(aes(x=dist.UTM)) +
+  geom_histogram(color='black',fill="white") +
+  facet_grid(cols=vars(Type),scales="free_x")
+```
+
+
+
+does time interval between tag and follow make a difference
+```{r}
+snaps %>% 
+  ggplot() +
+  geom_point(aes(x=Tag.Follow.Tdiff,y=dist.UTM)) +
+  facet_grid(cols=vars(Type))
+
+snaps %>% 
+  ggplot() +
+  geom_point(aes(x=Distance,y=dist.UTM)) +
+  facet_grid(cols=vars(Type))
+
+write.csv(snaps,here('GPS Tag/Manuscipt/Data/snaps_withdistance.csv'))
+```
+
+
+lets map
+```{r}
+m <- snaps %>% 
+  leaflet() %>% 
+   setView(lng = -82.65, lat =27.42, zoom = 11.5) %>% 
+   addTiles() %>% 
+  addCircleMarkers(lng=~Dolphin.Lon.WGS,lat=~Dolphin.Lat.WGS,color = "blue") %>% 
+  addCircleMarkers(lng=~Tag.Lon.WGS,lat=~Tag.Lat.WGS,color="red")
+  
+m
+
+m <- snaps %>% 
+  leaflet() %>% 
+   setView(lng = -82.65, lat =27.42, zoom = 11.5) %>% 
+   addTiles() %>% 
+  addCircleMarkers(lng=~Longitude,lat=~Latitude,color = "blue") 
+  
+m
+```
+
+
+```{r}
+a <- snaps.179063 %>% 
+  leaflet() %>% 
+   setView(lng = -82.65, lat =27.42, zoom = 11.5) %>% 
+   addTiles() %>% 
+  addCircleMarkers(lng=~Longitude,lat=~Latitude,color = "blue") 
+a
+```
+
+```{r}
+
+```
+
+
+
+aybe add follow tracks into this so we can see how far and what directions dolphins are estiamted to be from track?
+
+##########################################
+Try plotting each record
+
+```{r,echo=F}
+# Track and shapefile data set up
+
+# Bring in Saraosta Shapefile
+sar <- st_read("C:/Users/rtyson/Dropbox/Projects/GIS/Land/Sarasota_region.shp")
+
+# Creat plot
+study.area <- ggplot(data = sar) +
+    geom_sf() +
+    coord_sf(xlim = c(-82.79, -82.45), ylim = c(27.23, 27.56), expand = FALSE) +
+    ylab(label='Latidude')+
+    xlab(label='Longitude') +
+    theme_bw()  +
+    ggspatial::annotation_scale(location = "bl", width_hint = 0.4) 
+# We need to project data!
+```
+
+
+```{r}
+i = 1
+
+    mean.lon <- mean(c(snaps$Track.Lon.WGS[i] , snaps$Dolphin.Lon.WGS[i]))
+    mean.lat <- mean(c(snaps$Track.Lat.WGS[i] , snaps$Dolphin.Lat.WGS[i]))
+    diff.lon <- abs(snaps$Track.Lon.WGS[i] - snaps$Dolphin.Lon.WGS[i])
+    diff.lat <- abs(snaps$Track.Lat.WGS[i] - snaps$Dolphin.Lat.WGS[i])
+    
+   ggplot(data = sar) +
+    geom_sf() +
+    coord_sf(xlim = c(mean.lon + diff.lon*250, mean.lon - diff.lon*250), ylim = c(mean.lat + diff.lat*100, mean.lat - diff.lat*100), expand = FALSE) +
+    #coord_sf(xlim = c(-82.79, -82.45), ylim = c(27.23, 27.56), expand = FALSE) +
+    geom_point(data = snaps,aes(x=Dolphin.Lon.WGS[i],y=Dolphin.Lat.WGS[i]),color='blue',alpha=0.5,size=2) +
+    geom_point(data = snaps,aes(x=Track.Lon.WGS[i],y=Track.Lat.WGS[i]),color='red',alpha=0.5,size=2) +
+    ylab(label='Latidude')+
+    xlab(label='Longitude') +
+    theme_bw()  +
+    ggspatial::annotation_scale(location = "bl", width_hint = 0.4) +
+    geom_text()
+```  
+
+  
+```{r}   
+m <- snaps %>% 
+   filter(ID == 'F283') %>% 
+   leaflet() %>% 
+   setView(lng = -82.65, lat =27.42, zoom = 11.5) %>% 
+   addTiles() %>% 
+   addCircleMarkers(lng=~Dolphin.Lon.WGS,lat=~Dolphin.Lat.WGS,color = "blue") %>% 
+   addCircleMarkers(lng=~Tag.Lon.WGS,lat=~Tag.Lat.WGS,color="red") %>% 
+   addCircleMarkers(lng=~Track.Lon.WGS,lat=~Track.Lat.WGS,color='green') %>% 
+  addPolylines(data=t_05_naia,lng=~long,lat=~lat,color=~datetime) 
+
+```
+
+
+```{r}
+snaps$TrackTime.Tag.time.diff <- abs(difftime(snaps$Track.Time,snaps$Tag.Time))
+```
+
+
+```{r}
+ ggplot(data = snaps) +
+  geom_point(aes(x=TrackTime.Tag.time.diff,y=dist.UTM))
+```
+
