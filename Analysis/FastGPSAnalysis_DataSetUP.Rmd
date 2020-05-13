@@ -2,7 +2,7 @@
 title: Ground-truthing a newly designed GPS tag for inferring small cetacean locations
   and behaviors
 author: "Reny Tyson Moore, rtysonmoore@mote.org"
-date: "April 7, 2019"
+date: "May 13, 2020"
 output:
   html_document:
     df_print: paged
@@ -15,17 +15,6 @@ The incorporation of Fastloc GPS into biologging tags has the potential to great
 
 In this study, we deployed SPOT-F-368A, single-point Finmount tags (Wildlife Computers, Redmond, WA, USA) on three residents Sarasota Bay dolphins during a health asseessment. Tagged individuals were montiored to 1) assess the health and behavior of the dolphins post-tagging and release; 2) monitor the animals and examine the potential for the tags to be entangled in gear such as fishing line or trash; and 3) assess the accuracy of the data provided by the tags.  
 
-#######################################################
-Steps:
-- Compare accuracy of GPS locations during sets - all sets are too close (see 'GPSTagAnalysis_old' file)
-- Compare accuracy of GPS locations versus focal follow data using the available snapshots (make a table for this too)
-- Compare accuracy of GPS locations versus Argos locations
-- Collate all pictures of tagged animals during follow-up monitoring
-- Examine biofouling versus signal transmissions
-- Examine tag breakage
-- General plots about the tag data - look at GPSTagAnlaysis from last year for ideas (like number of transmissions/hr for argos/fastloc)
-
-***Need to check follow data and make sure everything was less than 2 min (or was there a bigger threshold I used?)***
 
 ```{r,echo=F,message=F,warning=F}
 # Clear work space ------------------------
@@ -47,7 +36,7 @@ library(leaflet)
 knitr::opts_chunk$set(fig.width=12, fig.height=8, fig.path='Figs/',
                       echo=FALSE, warning=FALSE, message=FALSE)
 
-opts_knit$set(root.dir = here::here("GPS Tag/Manuscipt/Analysis"))
+opts_knit$set(root.dir = here::here("Analysis"))
 
 options(scipen=999,digits=8)
 ```
@@ -66,7 +55,7 @@ options(scipen=999,digits=8)
 #write.csv(snaps,here('GPS Tag/Manuscipt/Data/snaps_updated.csv'))
 
 # manually add track data
-snaps <- read_csv(here::here('GPS Tag/Manuscipt/Data/snaps_updated_withNewLocSolve.csv'))
+snaps <- read_csv(here::here('Data/snaps_updated_withNewLocSolve.csv'))
 snaps$Day <- dmy(snaps$Day)
 snaps <- snaps %>% 
   filter(!is.na(Longitude))
@@ -124,68 +113,6 @@ snaps$Track.Lon.UTM <- utm.f.coords$Track.Lon
 ```
 
 Data were projected to NAD 83 UTM 17N for measurements.
-
-```{r}
-# Bring in track data and combine 
-
-# Bring in track files
-track.files <- list.files(here::here('GPS Tag/Manuscipt/Data/Tracks'))
-points_crs <- crs("+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
-
-project.gps <- function(x){
-  track.file <- read_csv(here::here(paste('GPS Tag/Manuscipt/Data/Tracks'),track.files[x]))
-  
-  # Project lat/long to WGS
-  track.spat <- SpatialPointsDataFrame(track.file[c("x_proj","x_proj")], track.file, proj4string = points_crs)
-  track.file$Long.WGS <- track.spat@data$x_proj
-  track.file$Lat.WGS <- track.spat@data$y_proj
-  
-  track.file$datetime.GMT <-  as.POSIXct(track.file$ltime,"%Y/%m/%d %H:%M:%OS",tz="UTC")
-  
-  return(track.file)
-}
-
-t_05_naia    <- project.gps(1)
-t_06_bob     <- project.gps(2)
-t_06_naia    <- project.gps(3)
-t_10_fregata <- project.gps(4)
-t_11_fregata <- project.gps(5)
-t_12_fregata <- project.gps(6)
-t_13_fregata <- project.gps(7)
-t_14_fregata <- project.gps(8)
-
-
-n5  <- t_05_naia %>% dplyr::select(Lat.WGS,Long.WGS,datetime.GMT); colnames(n5) <- c('lat','lon','datetime')
-b6  <- t_06_bob  %>% dplyr::select(Lat.WGS,Long.WGS,datetime.GMT); colnames(b6) <- c('lat','lon','datetime')
-n6  <- t_06_naia %>% dplyr::select(Lat.WGS,Long.WGS,datetime.GMT); colnames(n6) <- c('lat','lon','datetime')
-f10 <- t_10_fregata %>% dplyr::select(Lat.WGS,Long.WGS,datetime.GMT); colnames(f10) <- c('lat','lon','datetime')
-f11 <- t_11_fregata %>% dplyr::select(Lat.WGS,Long.WGS,datetime.GMT); colnames(f11) <- c('lat','lon','datetime')
-f12 <- t_12_fregata %>% dplyr::select(Lat.WGS,Long.WGS,datetime.GMT); colnames(f12) <- c('lat','lon','datetime')
-f13 <- t_13_fregata %>% dplyr::select(Lat.WGS,Long.WGS,datetime.GMT); colnames(f13) <- c('lat','lon','datetime')
-f14 <- t_14_fregata %>% dplyr::select(Lat.WGS,Long.WGS,datetime.GMT); colnames(f14) <- c('lat','lon','datetime')
-
-track <- rbind(n5,b6,n6,f10,f11,f12,f13,f14)
-track$Date <- as.Date(track$datetime)
-track$Time <- hms::as.hms(track$datetime)
-
-save(track,file="tracks.RData")
-```
-
-
-```{r}
-# Bring in Saraosta Shapefile
-sar <- st_read("C:/Users/rtyson/Dropbox/Projects/GIS/Land/Sarasota_region.shp")
-
-# Create plot
-study.area <- ggplot(data = sar) +
-    geom_sf() +
-    coord_sf(xlim = c(-82.79, -82.3), ylim = c(27.05, 27.6), expand = FALSE) +
-    ylab(label='Latidude')+
-    xlab(label='Longitude') +
-    theme_bw()  +
-    ggspatial::annotation_scale(location = "tr", width_hint = 0.4) 
-```
-
 
 Figure out true dolphin location
 Need Follow Time and boat track time
@@ -252,191 +179,8 @@ for (i in 1:nrow(snaps)){
 snaps$Snap <- c(seq(1,13,1),seq(1,21,1),seq(1,20,1))
 
 save(snaps,file='snaps.RData')
-
-
-
-FastGPS_data <- list(snaps,track)
-save(FastGPS_data,file='FastGPS_data_updated.RData')
+write.csv(snaps,file='snaps.csv')
 ```
 
 
-
-
-
-##############################################################
-every thing below needs to be moved to anaylss
-
-
-
-```{r}
-snaps %>% 
-  group_by(Type,Quality) %>% 
-  summarise(n(),
-            mean.dist.UTM=mean(dist.UTM),mean.dist.WGS=mean(dist.WGS),
-            median.dist.UTM=median(dist.UTM),median.dist.WGS=median(dist.WGS),
-            sd.dist.UTM=sd(dist.UTM),sd.dist.WGS=sd(dist.WGS),
-            min.dist.UTM=min(dist.UTM),min.dist.WGS=min(dist.WGS),
-            max.dist.UTM=max(dist.UTM),max.dist.WGS=max(dist.WGS)
-            )
-
-snaps %>% 
-  summarise(n(),
-            mean.dist.UTM=mean(dist.UTM),
-            median.dist.UTM=median(dist.UTM),
-            sd.dist.UTM=sd(dist.UTM),
-            min.dist.UTM=min(dist.UTM),
-            max.dist.UTM=max(dist.UTM))
-```
-
-good quality vs bad quality
-```{r}
-good <- snaps %>% 
-  filter(Good.Sats > 4) %>% 
-  filter(Residual < 35) %>% 
-  summarise(n(),
-            mean.dist.UTM=mean(dist.UTM),
-            median.dist.UTM=median(dist.UTM),
-            sd.dist.UTM=sd(dist.UTM),
-            min.dist.UTM=min(dist.UTM),
-            max.dist.UTM=max(dist.UTM))
-  
-```
-
-
-
-histograms of distances
-```{r}
-snaps %>% 
-  ggplot(aes(x=dist.UTM)) +
-  geom_histogram(color='black',fill="white") +
-  facet_grid(cols=vars(PTT),rows=vars(Type),scale="free_x")
-
-snaps %>% 
-  ggplot(aes(x=dist.UTM)) +
-  geom_histogram(color='black',fill="white") +
-  facet_grid(cols=vars(Type),scales="free_x")
-```
-
-
-
-does time interval between tag and follow make a difference
-```{r}
-snaps %>% 
-  ggplot() +
-  geom_point(aes(x=Tag.Follow.Tdiff,y=dist.UTM)) +
-  facet_grid(cols=vars(Type))
-
-snaps %>% 
-  ggplot() +
-  geom_point(aes(x=Distance,y=dist.UTM)) +
-  facet_grid(cols=vars(Type))
-
-write.csv(snaps,here('GPS Tag/Manuscipt/Data/snaps_withdistance.csv'))
-```
-
-
-lets map
-```{r}
-m <- snaps %>% 
-  leaflet() %>% 
-   setView(lng = -82.65, lat =27.42, zoom = 11.5) %>% 
-   addTiles() %>% 
-  addCircleMarkers(lng=~Dolphin.Lon.WGS,lat=~Dolphin.Lat.WGS,color = "blue") %>% 
-  addCircleMarkers(lng=~Tag.Lon.WGS,lat=~Tag.Lat.WGS,color="red")
-  
-m
-
-m <- snaps %>% 
-  leaflet() %>% 
-   setView(lng = -82.65, lat =27.42, zoom = 11.5) %>% 
-   addTiles() %>% 
-  addCircleMarkers(lng=~Longitude,lat=~Latitude,color = "blue") 
-  
-m
-```
-
-
-```{r}
-a <- snaps.179063 %>% 
-  leaflet() %>% 
-   setView(lng = -82.65, lat =27.42, zoom = 11.5) %>% 
-   addTiles() %>% 
-  addCircleMarkers(lng=~Longitude,lat=~Latitude,color = "blue") 
-a
-```
-
-```{r}
-
-```
-
-
-
-aybe add follow tracks into this so we can see how far and what directions dolphins are estiamted to be from track?
-
-##########################################
-Try plotting each record
-
-```{r,echo=F}
-# Track and shapefile data set up
-
-# Bring in Saraosta Shapefile
-sar <- st_read("C:/Users/rtyson/Dropbox/Projects/GIS/Land/Sarasota_region.shp")
-
-# Creat plot
-study.area <- ggplot(data = sar) +
-    geom_sf() +
-    coord_sf(xlim = c(-82.79, -82.45), ylim = c(27.23, 27.56), expand = FALSE) +
-    ylab(label='Latidude')+
-    xlab(label='Longitude') +
-    theme_bw()  +
-    ggspatial::annotation_scale(location = "bl", width_hint = 0.4) 
-# We need to project data!
-```
-
-
-```{r}
-i = 1
-
-    mean.lon <- mean(c(snaps$Track.Lon.WGS[i] , snaps$Dolphin.Lon.WGS[i]))
-    mean.lat <- mean(c(snaps$Track.Lat.WGS[i] , snaps$Dolphin.Lat.WGS[i]))
-    diff.lon <- abs(snaps$Track.Lon.WGS[i] - snaps$Dolphin.Lon.WGS[i])
-    diff.lat <- abs(snaps$Track.Lat.WGS[i] - snaps$Dolphin.Lat.WGS[i])
-    
-   ggplot(data = sar) +
-    geom_sf() +
-    coord_sf(xlim = c(mean.lon + diff.lon*250, mean.lon - diff.lon*250), ylim = c(mean.lat + diff.lat*100, mean.lat - diff.lat*100), expand = FALSE) +
-    #coord_sf(xlim = c(-82.79, -82.45), ylim = c(27.23, 27.56), expand = FALSE) +
-    geom_point(data = snaps,aes(x=Dolphin.Lon.WGS[i],y=Dolphin.Lat.WGS[i]),color='blue',alpha=0.5,size=2) +
-    geom_point(data = snaps,aes(x=Track.Lon.WGS[i],y=Track.Lat.WGS[i]),color='red',alpha=0.5,size=2) +
-    ylab(label='Latidude')+
-    xlab(label='Longitude') +
-    theme_bw()  +
-    ggspatial::annotation_scale(location = "bl", width_hint = 0.4) +
-    geom_text()
-```  
-
-  
-```{r}   
-m <- snaps %>% 
-   filter(ID == 'F283') %>% 
-   leaflet() %>% 
-   setView(lng = -82.65, lat =27.42, zoom = 11.5) %>% 
-   addTiles() %>% 
-   addCircleMarkers(lng=~Dolphin.Lon.WGS,lat=~Dolphin.Lat.WGS,color = "blue") %>% 
-   addCircleMarkers(lng=~Tag.Lon.WGS,lat=~Tag.Lat.WGS,color="red") %>% 
-   addCircleMarkers(lng=~Track.Lon.WGS,lat=~Track.Lat.WGS,color='green') %>% 
-  addPolylines(data=t_05_naia,lng=~long,lat=~lat,color=~datetime) 
-
-```
-
-
-```{r}
-snaps$TrackTime.Tag.time.diff <- abs(difftime(snaps$Track.Time,snaps$Tag.Time))
-```
-
-
-```{r}
- ggplot(data = snaps) +
-  geom_point(aes(x=TrackTime.Tag.time.diff,y=dist.UTM))
-```
 

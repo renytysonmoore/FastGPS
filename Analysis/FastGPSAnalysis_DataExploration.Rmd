@@ -1,12 +1,12 @@
 ---
 title: "Basic summmary and preliminary results for the FastGPS Tag accuracy analysis"
 author: "Reny Tyson Moore, rtysonmoore@mote.org"
-date: "May 6, 2020"
+date: "May 13, 2020"
 output:
+  pdf_document: default
+  word_document: default
   html_document:
     df_print: paged
-  word_document: default
-  pdf_document: default
 ---
 
 ```{r,echo=F,message=F,warning=F}
@@ -26,8 +26,8 @@ library(raster)
 library(geosphere)
 
 # Load data ------------------------
-load(here::here('GPS Tag/Manuscipt/Data/FastGPS_data_updated.RData'))
-snaps <- FastGPS_data[[1]]
+load(here::here('Data/snaps.RData'))
+#snaps <- FastGPS_data[[1]]
 
 snaps$PTT <- as.factor(snaps$Name)
 ```
@@ -37,7 +37,7 @@ snaps$PTT <- as.factor(snaps$Name)
 knitr::opts_chunk$set(fig.width=8, fig.height=4, fig.align = 'center',fig.path='Figs/',
                       echo=FALSE, warning=FALSE, message=FALSE)
 
-opts_knit$set(root.dir = here::here("GPS Tag/Manuscipt/Analysis"))
+opts_knit$set(root.dir = here::here("Analysis"))
 
 options(scipen=999,digits=5)
 ```
@@ -82,7 +82,7 @@ LS.all.data <-   snaps %>%
 ```{r}
 snaps$Quality <- rep("Poor",nrow(snaps))
 for (i in 1:nrow(snaps)){
-  if(snaps$Good.Sats[i] > 6){
+  if(snaps$Good.Sats[i] > 4){
     if(snaps$Residual[i] < 35){
       snaps$Quality[i] <- "Good"
     }
@@ -101,7 +101,7 @@ good.data <- snaps %>%
 # updated LocSolve
 snaps$LS.Quality <- rep("Poor",nrow(snaps))
 for (i in 1:nrow(snaps)){
-  if(snaps$SatsUsed[i] > 6){
+  if(snaps$SatsUsed[i] > 4){
     if(snaps$LocSolve.Residual[i] < 35){
       snaps$LS.Quality[i] <- "Good"
     }
@@ -286,7 +286,7 @@ Before we deployed these tags, we performed a 'bench test' to make sure the tags
 
 ```{r}
 # Data Setup ------------------------
-bench <- read_csv(here::here('GPS Tag/Manuscipt/Data/BenchTestData.csv'))
+bench <- read_csv(here::here('Data/BenchTestData.csv'))
 
 true.lat <- 27.335677
 true.lon <- -82.576490
@@ -527,12 +527,11 @@ Interestingly, the data from the old LocSolve appears to be more accurate and pr
 Argos locations were analysed the same was as the FastGPS locations. I did not do any extra processing of these locations yet - for now I just used the locations provided in the outputs from the data portal. We had 25 Argos 'snaps' (*i.e.*, matching records) within 2 minutes of the focal follow observations (179062 = 8, 179063 = 13, 179064 = 4). Five distances of dolphin locations were estimated with a range finder, all others were estimated by eye.
 ```{r}
 # Data Setup ------------------------
-snaps <- read_csv(here::here('GPS Tag/Manuscipt/Data/Argos_snaps.csv'))
+snaps <- read_csv(here::here('Data/Argos_snaps.csv'))
 ```
 
 ```{r}
 #Project lat/long to WGS and UTM so I can make measurments in km/m 
-# Did not inlucde WPT lat/long or Tag track lat/lon bc will not use these - they were backup points in the field in case track disappeared
 
 points_crs <- crs("+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
 
@@ -652,22 +651,8 @@ If desired, I can run these data through crawl or foieGras to interpolate each t
 
 ----------------------
 ## Argos - Bench Test
-
-```{r}
-# Data Setup ------------------------
-bench <- read_csv(here::here('GPS Tag/Manuscipt/Data/BenchTestData.csv'))
-
-true.lat <- 27.335677
-true.lon <- -82.576490
-
-true <- data.frame(cbind(true.lat,true.lon))
-```
-
 ```{r}
 #Project lat/long to WGS and UTM so I can make measurments in km/m 
-# Did not inlucde WPT lat/long or Tag track lat/lon bc will not use these - they were backup points in the field in case track disappeared
-
-points_crs <- crs("+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
 
 # Original Tag locations
 bench <- bench %>% 
