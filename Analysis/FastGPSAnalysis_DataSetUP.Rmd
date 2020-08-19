@@ -108,8 +108,6 @@ utm.f.coords <- data.frame(utm.f@coords)
 
 snaps$Track.Lat.UTM <- utm.f.coords$Track.Lat
 snaps$Track.Lon.UTM <- utm.f.coords$Track.Lon
-
-
 ```
 
 Data were projected to NAD 83 UTM 17N for measurements.
@@ -150,13 +148,15 @@ for (i in 1:nrow(snaps)){
                       lonlat=F)
 }
 
+
 snaps$dist.WGS <- c(rep(NA,nrow(snaps)))
 for (i in 1:nrow(snaps)){
   snaps$dist.WGS[i] <- pointDistance(
                       c(snaps$Tag.Lon.WGS[i],snaps$Tag.Lat.WGS[i]),
                       c(snaps$Dolphin.Lon.WGS[i],snaps$Dolphin.Lat.WGS[i]),
                       lonlat=T)
-}
+} ## This seems to be the right way - the distances here match the distances measured in google earth
+
 
 
 # with new LocSolve Processing
@@ -178,8 +178,8 @@ for (i in 1:nrow(snaps)){
 
 snaps$Snap <- c(seq(1,13,1),seq(1,21,1),seq(1,20,1))
 
-save(snaps,file='snaps.RData')
-write.csv(snaps,file='snaps.csv')
+save(snaps,here::here(file='C:/Users/rtyson/Dropbox/Projects/SDRP Tagging Projects/WCProjects/FastGPS/Data/snaps.RData')
+write.csv(snaps,file='C:/Users/rtyson/Dropbox/Projects/SDRP Tagging Projects/WCProjects/FastGPS/Data/snaps.csv')
 ```
 
 
