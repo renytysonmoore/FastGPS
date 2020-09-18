@@ -284,10 +284,6 @@ The 8 poor tag location records that were highly unlikely or implausible (*e.g.*
 
 
 
-just ran top bit
-
-
-
 Srmed in estimating the tag's true location (27.335677, -82.576490). For this comparison, I excluded all poor quality data ($\le$ 4 satellites used and residuals > 35) and calculated the distance between the tag's true location and respective estimated locations using the same methods as described above. 
 
 
@@ -409,11 +405,11 @@ for (i in 1:nrow(original)){
 o.r <- original %>% 
   filter(Quality == "Good") %>% 
     summarise(n(),
-            mean.dist.UTM=mean(dist.UTM),
-            median.dist.UTM=median(dist.UTM),
-            sd.dist.UTM=sd(dist.UTM),
-            min.dist.UTM=min(dist.UTM),
-            max.dist.UTM=max(dist.UTM))
+            mean.dist.WGS=mean(dist.WGS),
+            median.dist.WGS=median(dist.WGS),
+            sd.dist.WGS=sd(dist.WGS),
+            min.dist.WGS=min(dist.WGS),
+            max.dist.WGS=max(dist.WGS))
 
 # LocSovlve Processing
 LocSolve$Quality <- rep("Poor",nrow(LocSolve))
@@ -429,11 +425,11 @@ for (i in 1:nrow(LocSolve)){
 ls.r <- LocSolve %>% 
   filter(Quality == "Good") %>% 
       summarise(n(),
-            mean.dist.UTM=mean(dist.UTM),
-            median.dist.UTM=median(dist.UTM),
-            sd.dist.UTM=sd(dist.UTM),
-            min.dist.UTM=min(dist.UTM),
-            max.dist.UTM=max(dist.UTM))
+            mean.dist.WGS=mean(dist.WGS),
+            median.dist.WGS=median(dist.WGS),
+            sd.dist.WGS=sd(dist.WGS),
+            min.dist.WGS=min(dist.WGS),
+            max.dist.wGS=max(dist.WGS))
 
 
 sum.bench <- rbind(o.r,ls.r)
@@ -477,7 +473,7 @@ o.b.p.ll + LS.b.p.ll
 ```{r}
 o.b.p <- original %>% 
   ggplot() +
-  geom_point(aes(x=Residual,y=dist.UTM,color=Quality,size=Good.Sats),alpha=0.6) +
+  geom_point(aes(x=Residual,y=dist.WGS,color=Quality,size=Good.Sats),alpha=0.6) +
   scale_color_manual(values=c('lightblue3','lightcoral')) +
   #labs(y = 'Distance between tag & location processing estimates (m)')+
   ylab(expression(atop("Distance between tag & location", paste("processing estimates (m)")))) +
@@ -487,7 +483,7 @@ o.b.p <- original %>%
 
 LS.b.p <- LocSolve %>% 
   ggplot() +
-  geom_point(aes(x=LocSolve.Residual,y=dist.UTM,color=Quality,size=SatsUsed),alpha=0.6) +
+  geom_point(aes(x=LocSolve.Residual,y=dist.WGS,color=Quality,size=SatsUsed),alpha=0.6) +
   scale_color_manual(values=c('lightblue3','lightcoral')) +
   labs(y = '',x='Residual') +
   guides(size = guide_legend(order = 2),col = guide_legend(order = 1))+
@@ -501,7 +497,7 @@ o.b.p + LS.b.p
 
 ```{r}
 b.hist.p <- original %>% 
-  ggplot(aes(x=dist.UTM,fill=Quality)) +
+  ggplot(aes(x=dist.WGS,fill=Quality)) +
   geom_histogram(color='black') +
   scale_fill_manual(values=c('lightblue3','lightcoral')) +
   xlab(expression(atop("Distance between true &", paste("estimated locations (m)")))) +
@@ -512,7 +508,7 @@ b.hist.p <- original %>%
 
 
 b.LS.hist.p <- LocSolve %>% 
-  ggplot(aes(x=dist.UTM,fill=Quality)) +
+  ggplot(aes(x=dist.WGS,fill=Quality)) +
   geom_histogram(color='black') +
   scale_fill_manual(values=c('lightblue3','lightcoral')) +
   xlab(expression(atop("Distance between true &", paste("estimated locations (m)")))) +
@@ -614,11 +610,11 @@ snaps$Quality <- factor(snaps$LocationQuality,levels = c("3","2","1","0","A","B"
 snaps %>% 
     group_by(Quality) %>% 
     summarise(N = n(),
-            mean.distance=mean(dist.UTM),
-            median.distance=median(dist.UTM),
-            sd.distance=sd(dist.UTM),
-            min.distance=min(dist.UTM),
-            max.distance=max(dist.UTM)) %>% 
+            mean.distance=mean(dist.WGS),
+            median.distance=median(dist.WGS),
+            sd.distance=sd(dist.WGS),
+            min.distance=min(dist.WGS),
+            max.distance=max(dist.WGS)) %>% 
     gt()
 ```
 
@@ -628,11 +624,11 @@ snaps %>%
     filter(Quality == 3 | Quality == 2 | Quality == 1) %>%   
     group_by(Ptt,Quality) %>% 
     summarise(N = n(),
-            mean.distance=mean(dist.UTM),
-            median.distance=median(dist.UTM),
-            sd.distance=sd(dist.UTM),
-            min.distance=min(dist.UTM),
-            max.distance=max(dist.UTM)) %>% 
+            mean.distance=mean(dist.WGS),
+            median.distance=median(dist.WGS),
+            sd.distance=sd(dist.WGS),
+            min.distance=min(dist.WGS),
+            max.distance=max(dist.WGS)) %>% 
     gt()
 ```
 
@@ -647,7 +643,7 @@ snaps$PTT <- as.factor(snaps$Ptt)
 snaps %>% 
   filter(Quality == 3 | Quality == 2 | Quality == 1) %>%   
   ggplot() +
-  geom_point(aes(x=Tdiff.Tag.Track,y=dist.UTM,color=PTT)) +
+  geom_point(aes(x=Tdiff.Tag.Track,y=dist.WGS,color=PTT)) +
   scale_color_manual(values=c('lightblue3','lightcoral','darkseagreen3')) +
   labs(y = 'Distance between tag & dolphin (m)',x='Difference between tag & follow times (sec)') +
   theme(legend.position = "bottom") 
@@ -727,11 +723,11 @@ bench$Quality <- factor(bench$Quality,levels = c("3","2","1","0","A","B"))
 bench %>% 
     group_by(Quality) %>% 
     summarise(N = n(),
-            mean.distance=mean(dist.UTM),
-            median.distance=median(dist.UTM),
-            sd.distance=sd(dist.UTM),
-            min.distance=min(dist.UTM),
-            max.distance=max(dist.UTM)) %>% 
+            mean.distance=mean(dist.WGS),
+            median.distance=median(dist.WGS),
+            sd.distance=sd(dist.WGS),
+            min.distance=min(dist.WGS),
+            max.distance=max(dist.WGS)) %>% 
     gt()
 ```
 
