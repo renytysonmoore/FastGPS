@@ -95,10 +95,19 @@ sf_locs <- sf_locs %>%
 sf_locs <- sf_locs %>% 
   dplyr::mutate(
     pts_sf = purrr::map(pred_pts, ~ crawl::crw_as_sf(.x, ftype = "POINT",
-                                                     locType ="p")),
-    line_sf = purrr::map(pred_pts, ~ crawl::crw_as_sf(.x, ftype = "LINESTRING",
-                                                      locType = "p"))
+                                                     locType ="p"))
   )
 sf_locs
 
+# get predicted points out of Tibble
+sf_pred_pts <- sf_locs %>% tidyr::unnest(pts_sf) %>% 
+  select(-data,-fit,-pred_pts)
 
+pred_pts <- sf::st_coordinates(sf_pred_pts$geometry)
+sf_pred_pts <- as.data.frame(sf_pred_pts)
+
+predPts <- cbind(sf_pred_pts,pred_pts)
+long <- coordinates(predPts$geometry)[,1]
+lat <- coordinates(predPts$geometry)[,2]
+
+write.csv(predPts,'predictedBoatTracks.csv',row.names=FALSE)
