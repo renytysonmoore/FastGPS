@@ -1,0 +1,171 @@
+---
+title: Ground-truthing a newly designed GPS tag for inferring small cetacean locations
+  and behaviors
+author: "Reny Tyson Moore, rtysonmoore@mote.org"
+date: "Noveember 5, 2020"
+output:
+  html_document:
+    df_print: paged
+---
+
+**Introduction**
+One of the key things that scientists want to discover about the animals they study is “where they go.”  One way to achieve this is to attach a device, such as a tag, to an animal that can record its location.  Historically, this has been done with either satellite or GPS technology (similar to location services on a smart-phone).  While satellite-linked tags have been available for use with marine mammals for several decades, tags that incorporate GPS technology have been hard to develop for these animals because the GPS signal requires exposure at the surface for longer periods of time than an animal typically breathes.  Location data from GPS tags is more precise than location data from satellite tags so the ability to incorporate GPS into tags would open new doors for research opportunities on small cetaceans, such as bottlenose dolphins, pilot whales, and false killer whales.  FastLoc® Location Technology was recently developed to deal with this problem, and is able to obtain GPS data in fractions of a second.  This technology thus represents an exciting development that may allow researchers to use the power of GPS for tracking dolphins and porpoises in a more accurate and precise way, for the very first time.  
+
+The incorporation of Fastloc GPS into biologging tags has the potential to greatly enhance the accuracty of location data of tagged species. Here, we test the performance and accuracy of a fin-mounted FastLoc® GPS tag (SPLASH10-F; developed by Wildlife Computers, Redmond, Washington, USA) deployed on resident bottlenose dolpins (*Tursiops trunactus*) Sarasota Bay, Florida. This region is home to the worlds loggest running study of a wild bottlnose dolphin population, This our natural laboratory and ability to closely monitor well-known individual dolphins makes us uniquely positioned to be able to provide feedback on the function and performance of these newly designed GPS tags. 
+
+In this study, we deployed SPOT-F-368A, single-point Finmount tags (Wildlife Computers, Redmond, WA, USA) on three residents Sarasota Bay dolphins during a health asseessment. Tagged individuals were montiored to 1) assess the health and behavior of the dolphins post-tagging and release; 2) monitor the animals and examine the potential for the tags to be entangled in gear such as fishing line or trash; and 3) assess the accuracy of the data provided by the tags.  
+
+
+```{r,echo=F,message=F,warning=F}
+# Clear work space ------------------------
+rm(list=ls())
+
+# Load libraries ------------------------
+library(tidyverse)
+library(lubridate)
+library(sf)
+library(raster)
+library(geosphere)
+library(here)
+library(knitr)
+library(leaflet)
+library(purrr)
+```
+
+
+```{r global_options, echo=F, include=FALSE,warning=F,message=F}
+knitr::opts_chunk$set(fig.width=12, fig.height=8, fig.path='Figs/',
+                      echo=FALSE, warning=FALSE, message=FALSE)
+
+opts_knit$set(root.dir = here::here("Analysis"))
+
+options(scipen=999,digits=8)
+```
+
+Upload Crawl results
+
+```{r}
+crwl <- read_csv(here::here('Data/predictedBoatTracks.csv'))
+
+#convert the UTM crwl predictions to lat.long
+library(rgdal)
+utms <- SpatialPoints(crwl[,c('X','Y')], proj4string=CRS('+proj=utm +zone=17'))
+longlats <- spTransform(utms, CRS('+proj=longlat'))
+
+lon.lat <- longlats@coords
+colnames(lon.lat) <- c('lon','lat')
+
+crwl <- cbind(crwl,lon.lat)
+write.csv(crwl,'predictedBoatTracks_DecDeg.csv')
+
+#Now manually added these locations to the snaps spreadsheet.
+```
+If you ever need to do anything with the crwl data you need to double check that the right columsn were grabbed
+probably need to do this anyeay
+highlighed rows. and put ones in the tag.time and follow.time columns, but i think i missed a few
+
+```{r}
+# manually add track data
+snaps <- read_csv(here::here('Data/snaps_updated_withNewLocSolve.csv'))
+#table(snaps$Name)
+
+snaps$Day <- dmy(snaps$Day)
+snaps <- snaps %>% 
+  filter(!is.na(Longitude))
+#table(snaps$Name)
+```
+
+59 records (used to be 56)
+5 FastGPS records that had matched follow data did not have latitude/longitude data available
+leaves 54 snaps: 190762 = 13, 179063 = 21, 179064 = 20 (Old: leaves 51 snaps: 190762 = 13, 179063 = 21, 179064 = 17)
+
+
+```{r}
+snaps %>% 
+  summarise(x=median(Distance),y=mean(Distance),z=sd(Distance),m1 = min(Distance),m2 = max(Distance))
+
+snaps %>% 
+  summarise(x=median(Tdiff),y=mean(Tdiff),z=sd(Tdiff),m1 = min(Tdiff),m2 = max(Tdiff))
+```
+
+
+
+```{r}
+#Project lat/long to WGS and UTM so I can make measurments in km/m 
+# Did not inlucde WPT lat/long or Tag track lat/lon bc will not use these - they were backup points in the field in case track disappeared
+
+points_crs <- crs("+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
+
+# Original Tag locations
+spat.t <- SpatialPointsDataFrame(snaps[c("Latitude","Longitude")],  snaps, proj4string = points_crs) 
+
+snaps$Tag.Lat.WGS <- spat.t @data$Latitude
+snaps$Tag.Lon.WGS <- spat.t @data$Longitude
+
+# utm.t <- spTransform(spat.t , crs("+init=epsg:26917"))
+# utm.t.coords <- data.frame(utm.t@coords)
+# 
+# snaps$Tag.Lat.UTM <- utm.t.coords$Latitude
+# snaps$Tag.Lon.UTM <- utm.t.coords$Longitude
+
+# LocSolve Tag locations
+spat.l <- SpatialPointsDataFrame(snaps[c("LocSolve.Lat","LocSolve.Lon")],  snaps, proj4string = points_crs) 
+
+snaps$LS.Tag.Lat.WGS <- spat.t @data$LocSolve.Lat
+snaps$LS.Tag.Lon.WGS <- spat.t @data$LocSolve.Lon
+
+# utm.l <- spTransform(spat.l , crs("+init=epsg:26917"))
+# utm.l.coords <- data.frame(utm.l@coords)
+# 
+# snaps$LS.Tag.Lat.UTM <- utm.l.coords$LocSolve.Lat
+# snaps$LS.Tag.Lon.UTM <- utm.l.coords$LocSolve.Lon
+
+```
+
+Data were projected to NAD 83 UTM 17N for measurements.
+
+Figure out true dolphin location
+Need Follow Time and boat track time
+Take boat track time. Then range and bearing to calclate. 
+```{r}
+# Calulate true dolphin location based on boat track and observed range and bearing
+# uses destPoint function from geosphere package
+p <- cbind(snaps$crwl.lon.follow,snaps$crw.lat.follow)
+Dolphin.locs <- destPoint(p,snaps$Bearing.HH,snaps$Distance)
+snaps$Dolphin.Lon <- Dolphin.locs[,1]
+snaps$Dolphin.Lat <- Dolphin.locs[,2]
+
+```
+
+Now calculate distance between tag locations and dolphin locations
+```{r}
+# Uses pointDistance function from raster package
+snaps$LS1.distance <- c(rep(NA,nrow(snaps)))
+for (i in 1:nrow(snaps)){
+  snaps$LS1.distance[i] <- pointDistance(
+                      c(snaps$Tag.Lon.WGS[i],snaps$Tag.Lat.WGS[i]),
+                      c(snaps$Dolphin.Lon[i],snaps$Dolphin.Lat[i]),
+                      lonlat=T)
+} ## This seems to be the right way - the distances here match the distances measured in google earth
+
+
+##########################################################
+# with new LocSolve Processing
+snaps$LS2.distance <- c(rep(NA,nrow(snaps)))
+for (i in 1:nrow(snaps)){
+  snaps$LS2.distance[i] <- pointDistance(
+                      c(snaps$LS.Tag.Lon.WGS[i],snaps$LS.Tag.Lat.WGS[i]),
+                      c(snaps$Dolphin.Lon[i],snaps$Dolphin.Lat[i]),
+                      lonlat=T)
+}
+
+snaps$Snap <- c(seq(1,13,1),seq(1,21,1),seq(1,20,1))
+
+save(snaps,file='C:/Users/rtyson/Dropbox/Projects/SDRP Tagging Projects/WCProjects/FastGPS/Data/snaps_crwl.RData')
+write.csv(snaps,file='C:/Users/rtyson/Dropbox/Projects/SDRP Tagging Projects/WCProjects/FastGPS/Data/snaps_crwl.csv')
+```
+
+
+
+
+

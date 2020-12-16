@@ -1,0 +1,818 @@
+---
+title: "Basic summmary and preliminary results for the FastGPS Tag accuracy analysis"
+author: "Reny Tyson Moore, rtysonmoore@mote.org"
+date: "May 13, 2020"
+output:
+  pdf_document: default
+  word_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r,echo=F,message=F,warning=F}
+# Clear work space ------------------------
+rm(list=ls())
+
+# Load libraries ------------------------
+library(tidyverse)
+library(lubridate)
+library(here)
+library(knitr)
+library(gt)
+library(sass)
+library(patchwork)
+library(sf)
+library(raster)
+library(geosphere)
+library(viridis)
+
+# Load data ------------------------
+load(here::here('Data/snaps_crwl.RData'))
+#snaps <- FastGPS_data[[1]]
+
+snaps$PTT <- as.factor(snaps$Name)
+```
+
+
+```{r global_options, echo=F, include=FALSE,warning=F,message=F}
+knitr::opts_chunk$set(fig.width=8, fig.height=4, fig.align = 'center',fig.path='Figs/',
+                      echo=FALSE, warning=FALSE, message=FALSE)
+
+opts_knit$set(root.dir = here::here("Analysis"))
+
+options(scipen=999,digits=6)
+```
+
+## FastGPS Analysis - Field Tests
+**Methods:**   
+- I downloaded all data from the data portal on 19 March 2020 after performing location processing.  
+- For each PTT ID, I opened the FastGPS files and corrected the Time records by subtracting the Time Offset (after confirming with Matt that this was correct). I also subtracted 4hrs, so times were reported as local times to directly compare with our focal follow data   
+- I manually went through all FastGPS records and compared them to our focal follow data records. Any tag times that were within 2 minutes of a focal follow observation of the tagged individual that included a distance and bearing estimate were identified as a 'snap' (*i.e.,* a matched record) for further analyses. We identified 56 snaps (179062 = 16 snaps, 179063 = 23 snaps, 179064 = 17 snaps)  
+- Five of the snaps did not have latitude/longitude data available from the FastGPS records. This left 54 snaps for analysis (179062 = 13 snaps, 179063 = 21 snaps, 179064 = 20 snaps)  
+- I created a spreadsheet that contained all snaps records from the FastGPS files downloaded from the portal along with the focal follow data recorded from the field.  
+- Within this spreadsheet I added columns to identify corresponding location data from the boat's GPS. Given we had set our GPS to record every fro seconds, I had to find the time from the GPS that was closest to the time recorded for our follow observation, and record that corresponding time, latitude, and longitude. All track times were within 5 seconds of the follow observation time.   
+- All location data were projected to NAD 83 UTM 17N in R, so that measurements of distance could be made in km/m.  
+- The *true* dolphin locations were estimated using the destpoint function from the geosphere package in R. I used the location obtained from the boat's GPS from the time that was closest to the reported focal follow observation time, along with our estimates of the distance and bearing of the dolphin from the boats location. Note: 5 distances were estimated from a range finder, 49 were estimated by eye. Bearing estimates were made from a hand held compass.   
+- Distances between the estimated *true* dolphin locations and the locations reported by the FastGPS tags were calculated using the pointDistance function from the raster package in R.
+     
+   
+**Updated May 6, 2019:**   
+- Edmund Bryant recently updated the location processing system, LocSolve, used to derive the locations from Fastloc records and re-ran the tag data to compare with the older version's output. Below you will find the results from both location processing runs (old and new LocSolve). With the new processing, all records had residuals less than 35 and 29 records used 5 or more satellites to acquire locations. This resulted in 29 'good' quality locations using the new LocSolve, versus 15 from the older LocSolve version.
+
+```{r}
+LS1.all.data <- snaps %>% 
+  summarise(N = n(),
+            mean.distance = mean(LS1.distance),
+            median.distance = median(LS1.distance),
+            sd.distance = sd(LS1.distance),
+            min.distance = min(LS1.distance),
+            max.distance = max(LS1.distance)
+            )    
+
+# updated LocSolve
+LS2.all.data <-   snaps %>% 
+    summarise(N = n(),
+            mean.distance = mean(LS2.distance),
+            median.distance = median(LS2.distance),
+            sd.distance = sd(LS2.distance),
+            min.distance = min(LS2.distance),
+            max.distance = max(LS2.distance)
+            )   
+```     
+  
+      
+**Table 1. Summary statistics of distances estimated between the dolphin's *true* location and the tag's esimated location for all FastGPS snaps, as well as those deemed to be 'good' quality. Good quality snaps are considered to be those that were acquired using at least 5 satellites and that had residuals less than 35**
+```{r}
+snaps$LS1.Quality <- rep("Poor",nrow(snaps))
+for (i in 1:nrow(snaps)){
+  if(snaps$Good.Sats[i] >= 5){
+    if(snaps$Residual[i] < 35){
+      snaps$LS1.Quality[i] <- "Good"
+    }
+  }
+}
+
+LS1.good.data <- snaps %>% 
+  filter(LS1.Quality == "Good") %>% 
+   summarise(N = n(),
+            median.distance = median(LS1.distance),
+            mean.distance = mean(LS1.distance),
+            sd.distance = sd(LS1.distance),
+            min.distance = min(LS1.distance),
+            max.distance = max(LS1.distance)) 
+
+# updated LocSolve
+snaps$LS2.Quality <- rep("Poor",nrow(snaps))
+for (i in 1:nrow(snaps)){
+  if(snaps$SatsUsed[i] >= 5){
+    if(snaps$LocSolve.Residual[i] < 35){
+      snaps$LS2.Quality[i] <- "Good"
+    }
+  }
+}
+
+LS2.good.data <- snaps %>% 
+  filter(LS2.Quality == "Good") %>% 
+   summarise(N = n(),
+            median.distance = median(LS2.distance),
+            mean.distance = mean(LS2.distance),
+            sd.distance = sd(LS2.distance),
+            min.distance = min(LS2.distance),
+            max.distance = max(LS2.distance))  
+```   
+
+```{r}
+summ.d <- rbind(LS1.all.data,LS2.all.data,LS1.good.data,LS2.good.data)
+
+types <- c("All - LocSolve Version 1","All - LocSolve Version 2","Good - LocSolve Version 1","Good - LocSolve Version 2")
+ 
+summ <- cbind(types,summ.d); colnames(summ) <- c("Data","N","median.distance","mean.distance","sd.distance","min.distance","max.distance")
+
+summ %>% gt()
+```  
+  Satellite info
+```{r}
+# Sats Used
+snaps %>% 
+  #filter(LS1.Quality == "Good") %>% 
+   summarise(N = n(),
+            median.sats = median(Good.Sats),
+            mean.sats = mean(Good.Sats),
+            sd.sats = sd(Good.Sats),
+            min.sats = min(Good.Sats),
+            max.sats = max(Good.Sats)) 
+snaps %>% 
+  #filter(LS2.Quality == "Good") %>% 
+   summarise(N = n(),
+            median.sats = median(SatsUsed),
+            mean.sats = mean(SatsUsed),
+            sd.sats = sd(SatsUsed),
+            min.sats = min(SatsUsed),
+            max.sats = max(SatsUsed)) 
+
+
+
+# Residuals
+snaps %>% 
+  #filter(LS1.Quality == "Good") %>% 
+   summarise(N = n(),
+            median.sats = median(Residual),
+            mean.sats = mean(Residual),
+            sd.sats = sd(Residual),
+            min.sats = min(Residual),
+            max.sats = max(Residual)) 
+snaps %>% 
+  #filter(LS2.Quality == "Good") %>% 
+   summarise(N = n(),
+            median.sats = median(LocSolve.Residual),
+            mean.sats = mean(LocSolve.Residual),
+            sd.sats = sd(LocSolve.Residual),
+            min.sats = min(LocSolve.Residual),
+            max.sats = max(LocSolve.Residual)) 
+
+
+```
+  
+        
+          
+**Table 2. Summary statistics for good quality FastGPS location data by PTT ID**
+```{r}
+LS1.PTT <- snaps %>% 
+  filter(LS1.Quality == "Good") %>% 
+  group_by(PTT) %>% 
+   summarise(N = n(),
+            median.distance = median(LS1.distance),
+            mean.distance = mean(LS1.distance),
+            sd.distance = sd(LS1.distance),
+            min.distance = min(LS1.distance),
+            max.distance = max(LS1.distance)) 
+
+LS2.PTT <- snaps %>% 
+  filter(LS2.Quality == "Good") %>% 
+  group_by(PTT) %>% 
+   summarise(N = n(),
+            median.distance = median(LS2.distance),
+            mean.distance = mean(LS2.distance),
+            sd.distance = sd(LS2.distance),
+            min.distance = min(LS2.distance),
+            max.distance = max(LS2.distance)) 
+
+
+sum.PTT <- rbind(LS1.PTT[1,],LS2.PTT[1,],
+                 LS1.PTT[2,],LS2.PTT[2,],
+                 LS1.PTT[3,],LS2.PTT[3,])
+
+types <- c("Vs 1","Vs 2",
+          "Vs 1","Vs 2",
+           "Vs 1","Vs 2")
+ 
+sumPTT <- cbind(types,sum.PTT); 
+colnames(sumPTT) <- c("LocSolve","PTT","N","median.distance","mean.distance","sd.distance","min.distance","max.distance")
+
+sumPTT %>% gt()
+```
+```{r}
+LS1.PTT <- snaps %>% 
+  filter(LS1.Quality == "Good") %>% 
+   summarise(N = n(),
+            median.distance = round(median(LS1.distance),2),
+            mean.distance = mean(LS1.distance),
+            sd.distance = sd(LS1.distance),
+            min.distance = min(LS1.distance),
+            max.distance = max(LS1.distance)) 
+
+LS2.PTT <- snaps %>% 
+  filter(LS2.Quality == "Good") %>% 
+   summarise(N = n(),
+            median.distance = median(LS2.distance),
+            mean.distance = mean(LS2.distance),
+            sd.distance = sd(LS2.distance),
+            min.distance = min(LS2.distance),
+            max.distance = max(LS2.distance)) 
+
+
+summ.d <- rbind(LS1.PTT,LS2.PTT)
+
+types <- c("Version 1","Version 2")
+ 
+summ <- cbind(types,summ.d); colnames(summ) <- c("Data","N","median.distance","mean.distance","sd.distance","min.distance","max.distance")
+
+summ %>% gt()
+```
+
+
+
+Figure 2
+```{r}
+LS1.quality <- snaps %>% 
+   ggplot() +
+   geom_point(aes(x=Good.Sats,y=Residual,fill=LS1.Quality,size=LS1.distance),alpha=0.6,pch=21,position = position_jitter(w = 0.25, h = 0)) +
+  scale_size_continuous(name="Distance (m)",breaks = c(25,100,500,1000),range=c(2,12)) +
+    scale_fill_manual(values=c('lightblue3','lightcoral')) +
+   labs(y = 'Residual',x='Number of Satellites')+
+   ggtitle("LocSolve Version 1")+ 
+   # scale_color_viridis_c() +
+   xlim(3,9) +
+   ylim(0,260) +
+   theme_bw() +
+  theme(legend.position = "none")
+    
+LS2.quality <- snaps %>% 
+   ggplot() +
+   geom_point(aes(x=SatsUsed,y=LocSolve.Residual,fill=LS2.Quality,size=LS2.distance),alpha=0.6,pch=21,position = position_jitter(w = 0.25, h = 0)) +
+  scale_size_continuous(name="Distance (m)",breaks = c(25,100,500,1000),range=c(2,12)) +
+    scale_fill_manual(values=c('lightblue3','lightcoral'),name="Quality") +
+   labs(y = 'Residual',x='Number of Satellites')+
+   ggtitle("LocSolve Version 2")+ 
+   # scale_color_viridis_c() +
+    xlim(3,9) +
+   ylim(0,260) +
+   theme_bw() +
+  guides(fill = guide_legend(override.aes = list(size=3)))
+
+quality.plot <- LS1.quality + LS2.quality
+quality.plot
+
+
+
+ggsave('Quality.jpg',plot=quality.plot,path="C:/Users/rtyson/Dropbox/Projects/SDRP Tagging Projects/WCProjects/FastGPS/Manuscript/Figures",dpi=600,height =5,width=10) 
+
+
+#compare LS1 LS2 
+ vs1vs2 <- snaps %>% 
+  ggplot() +
+    geom_abline(intercept = 0, slope = 1,linetype=2) +
+  geom_point(aes(x=LS1.distance,y=LS2.distance,shape=as.factor(Name),fill=as.factor(Name)),size=3,alpha=0.6) +
+  labs(y = 'LocSolve Version 2 Distances',x='LocSolve Version 1 Distances') +
+  scale_shape_manual(name="PTT ID",values=c(21,22,24)) +
+  scale_fill_manual(values=c('lightblue3','lightcoral','darkseagreen3'),name="PTT ID") +
+  ylim(0,1200)+
+  xlim(0,5300)+
+  theme_bw() +  
+  theme(legend.position = "right") #+
+  #annotate(geom="text",x=-0.5,y=1100,label="C") 
+ 
+all.panels <- quality.plot/vs1vs2 +
+   plot_annotation(tag_levels="A",  tag_suffix = ')')
+
+ggsave('LocSolve_differences.jpg',plot=all.panels,path="C:/Users/rtyson/Dropbox/Projects/SDRP Tagging Projects/WCProjects/FastGPS/Manuscript/Figures",dpi=600,height =8,width=10) 
+```  
+  
+**Figure 2. The relationship between the distances estimated between the tags and dolphins and the resdual of the tag location. The number of satellites is referencd by point size. Our definition of good and poor quality locations is referenced by point color.**
+
+
+
+
+
+Compare distances from two differenct
+```{r}
+snaps$dist.diff <- snaps$LS2.distance - snaps$LS1.distance
+
+table(sign(snaps$dist.diff))
+
+snaps$dist.diff2 <- abs(snaps$dist.diff)
+
+snaps %>% 
+  group_by(PTT) %>% 
+   summarise(N = n(),
+            median.distance = median(dist.diff2),
+            mean.distance = mean(dist.diff2),
+            sd.distance = sd(dist.diff2),
+            min.distance = min(dist.diff2),
+            max.distance = max(dist.diff2)) 
+
+length(which(snaps$dist.diff2 < 10))
+
+ptt62 <- snaps %>% 
+  filter(PTT == '179062')
+
+ptt63 <- snaps %>% 
+  filter(PTT == '179063')
+
+ptt64 <- snaps %>% 
+  filter(PTT == '179064')
+
+
+md.group <- ordered(snaps$PTT,
+                         levels = c("179062", "179063", "179064"))
+
+res.aov <- aov(dist.diff2 ~ PTT,data=snaps)
+summary(res.aov)
+TukeyHSD(res.aov)
+```
+
+```{r}
+
+ls1.good <- snaps %>% 
+  filter(LS1.Quality == "Good")
+
+ls2.good <- snaps %>% 
+  filter(LS2.Quality == "Good")
+
+t.test(ls1.good$LS1.distance,ls2.good$LS2.distance)
+```
+
+
+
+
+
+
+
+
+
+Tables 1 and 2 demonstrate that the new LocSolve processing system appeared to improve the accuracy of the FastGPS locations in reference to the dolphins true locations.  
+   
+The difference in the times reported by the FastGPS tag and those used from our focal follow observations and boat tracks to estimate dolphin locations affected the estimated distances between the dolphin and tag locations (Figure 1). 
+```{r}
+o.time.p <- snaps %>% 
+  filter(LS1.Quality == "Good") %>% 
+  ggplot() +
+  geom_point(aes(x=Tdiff,y=LS1.distance,shape=as.factor(Name),fill=as.factor(Name)),size=3,alpha=0.6) +
+  scale_shape_manual(name="PTT ID",values=c(21,22,24)) +
+  scale_fill_manual(name="PTT ID", values=c('lightblue3','lightcoral','darkseagreen3')) +
+  labs(y = 'Distance (m)',x='Difference between tag time & observed surfacing time (sec)') +
+   theme_bw() +
+  theme(legend.position = "bottom") +
+  ggtitle("LocSolve Version 1") +
+  xlim(0,110)
+
+ls.time.p <- snaps %>% 
+  filter(LS2.Quality == "Good") %>% 
+  ggplot() +
+  geom_point(aes(x=Tdiff,y=LS2.distance,shape=as.factor(Name),fill=as.factor(Name)),size=3,alpha=0.6) +
+  scale_shape_manual(name="PTT ID",values=c(21,22,24)) +
+  scale_fill_manual(name="PTT ID", values=c('lightblue3','lightcoral','darkseagreen3')) +
+  labs(y = 'Distance (m)',x='Difference between tag time & observed surfacing time (sec)') +
+  theme_bw() +
+  theme(legend.position = "bottom") +
+  ggtitle("LocSolve Version 2") +
+  xlim(0,110)
+
+temporal <- o.time.p + ls.time.p + 
+  plot_annotation(tag_levels = "A",tag_suffix = ')')
+temporal
+
+ggsave('LocSolve_temporal_differences.jpg',plot=temporal,path="C:/Users/rtyson/Dropbox/Projects/SDRP Tagging Projects/WCProjects/FastGPS/Manuscript/Figures",dpi=600,height =5,width=10) 
+```      
+  
+**Figure 1. The relationship between the lag in time between the data transmitted by the tag (old and new LocSolve location processing) and that recorded during our focal follow observations to the distances estimated between the tag and true dolphin location. Note: only good quality FastGPS locations are included.**    
+
+
+
+```{r}
+
+LS1.best <- snaps %>% 
+  filter(LS1.Quality == "Good") %>% 
+  filter(Tdiff < 5 ) %>% 
+   summarise(N = n(),
+            median.distance = median(LS1.distance),
+            mean.distance = mean(LS1.distance),
+            sd.distance = sd(LS1.distance),
+            min.distance = min(LS1.distance),
+            max.distance = max(LS1.distance))
+
+
+LS2.best <- snaps %>% 
+  filter(LS2.Quality == "Good") %>% 
+  filter(Tdiff < 5) %>% 
+   summarise(N = n(),
+            median.distance = median(LS2.distance),
+            mean.distance = mean(LS2.distance),
+            sd.distance = sd(LS2.distance),
+            min.distance = min(LS2.distance),
+            max.distance = max(LS2.distance)) 
+
+
+sum.best <- rbind(LS1.best,LS2.best)
+
+types <- c("Vs 1","Vs 2")
+ 
+sum.best<- cbind(types,sum.best); 
+colnames(sum.best) <- c("LocSolve","N","median.distance","mean.distance","sd.distance","min.distance","max.distance")
+
+sum.best %>% gt()
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+   
+```{r}
+LS.Good  <- snaps %>% 
+  filter(LS.Quality == "Good")
+
+snaps$time.buffer = 
+
+  
+o.time.p <-    snaps %>% 
+  filter(Quality == "Good") %>% 
+  ggplot() +
+  geom_point(data=LS.Good,aes(x=Tdiff.Tag.Track,y=LS.dist.WGS),size=2,alpha=1,color="white") +
+  geom_point(aes(x=Tdiff.Tag.Track,y=dist.WGS,fill=PTT),size=2,alpha=0.7,pch=21) +
+  geom_point(aes(x=Tdiff,y=dist.WGS,fill=PTT),size=2,alpha=0.7,pch=22) +
+  geom_segment(mapping=aes(x=Tdiff.Tag.Track,y=dist.WGS,xend=Tdiff,yend=dist.WGS,color=PTT),size=1,alpha=0.7,pch=21) +
+  labs(y = 'Distance (m)',x='Temporal lag (sec)') +
+  scale_color_manual(values = c("#440154FF","#2D708EFF","#D1C56AFF")) +
+  scale_fill_manual(values = c("#440154FF","#2D708EFF","#D1C56AFF")) +
+  ylim(0,275)+
+  ggtitle("A) LocSolve Version 1")+
+  theme_bw() +
+  theme(legend.position = "none") 
+
+
+ls.time.p <- snaps %>% 
+  filter(LS.Quality == "Good") %>% 
+  ggplot() +
+  geom_point(aes(x=Tdiff.Tag.Track,y=LS.dist.WGS,fill=PTT),size=2,alpha=0.7,pch=21) +
+  geom_point(aes(x=Tdiff,y=LS.dist.WGS,fill=PTT),size=2,alpha=0.7,pch=22) +
+  geom_segment(mapping=aes(x=Tdiff.Tag.Track,y=LS.dist.WGS,xend=Tdiff,yend=LS.dist.WGS,color=PTT),size=1,alpha=0.7,pch=21) +
+  labs(y = '',x='Temporal lag (sec)') +
+  scale_fill_manual(values = c("#440154FF","#2D708EFF","#D1C56AFF"),name="PTT ID") +
+  scale_color_manual(values = c("#440154FF","#2D708EFF","#D1C56AFF"),name="PTT ID") +
+  #scale_linetype_manual(values = c("#440154FF","#2D708EFF","#D1C56AFF"),name="PTT ID")
+  #ylim(0,275)+
+  ggtitle("A) LocSolve Version 2")+
+  theme_bw() +  
+  theme(legend.position = "right")
+
+  
+
+temporal.lag.p <- o.time.p+  ls.time.p
+ggsave('Temporal_Lag.jpg',plot=temporal.lag.p,path="C:/Users/rtyson/Dropbox/Projects/SDRP Tagging Projects/WCProjects/FastGPS/Manuscript/Figures",dpi=600,height =5,width=10)  
+```
+   
+   do it instead with lines
+```{r}
+
+```
+   
+   
+```{r}
+O.Good  <- snaps %>% 
+  filter(Quality == "Good")
+
+LS.Good %>% 
+  summarise(x = median(Tdiff.Follow.Track),
+            y = mean(Tdiff.Follow.Track),
+            z = sd(Tdiff.Follow.Track),
+            a = min(Tdiff.Follow.Track),
+            b = max(Tdiff.Follow.Track))
+
+O.Good %>% 
+  summarise(x = median(Tdiff.Follow.Track),
+            y = mean(Tdiff.Follow.Track),
+            z = sd(Tdiff.Follow.Track),
+            a = min(Tdiff.Follow.Track),
+            b = max(Tdiff.Follow.Track))
+
+LS.Good %>% 
+  summarise(x = median(Tdiff),
+            y = mean(Tdiff),
+            z = sd(Tdiff),
+            a = min(Tdiff),
+            b = max(Tdiff))
+
+O.Good %>% 
+  summarise(x = median(Tdiff),
+            y = mean(Tdiff),
+            z = sd(Tdiff),
+            a = min(Tdiff),
+            b = max(Tdiff))
+```
+   
+   
+   
+Figure 1 shows that for data from both LocSolve versions appear to be most accurate when we consider tag data that was received less than 10 seconds from an observed dolphin surfacing (Table 3). As the time between the dolphin surfacing and location transmitted increases, so does the distance between the estimated distance between the dolphin and the tag location. This is likely related to the dolphins movements between surfacings and the likelihood that the surfacing observed is the surfacing that was used to generate a location on the tag. 
+
+**Table 3: Summary statistics for good quality data that has a temporal difference between the reported tag time and the focal follow observation of less than 10 seconds**
+```{r}
+
+best <- snaps %>% 
+  filter(Quality == "Good") %>% 
+  filter(Tdiff < 5 ) %>% 
+   summarise(N = n(),
+            mean.distance = mean(distance),
+            median.distance = median(distance),
+            sd.distance = sd(distance),
+            min.distance = min(distance),
+            max.distance = max(distance))
+
+
+LS.best <- snaps %>% 
+  filter(LS.Quality == "Good") %>% 
+  filter(Tdiff < 5) %>% 
+   summarise(N = n(),
+            mean.distance = mean(LS.distance),
+            median.distance = median(LS.distance),
+            sd.distance = sd(LS.distance),
+            min.distance = min(LS.distance),
+            max.distance = max(LS.distance)) 
+
+
+
+
+sum.best <- rbind(best,LS.best)
+
+types <- c("Old","New")
+ 
+sum.best<- cbind(types,sum.best); 
+colnames(sum.best) <- c("LocSolve","N","mean.distance","median.distance","sd.distance","min.distance","max.distance")
+
+sum.best %>% gt()
+```
+  
+
+
+
+
+```{r}
+quality.p <- snaps %>% 
+  ggplot() +
+  geom_point(aes(x=Residual,y=dist.WGS,color=Residual,size=Good.Sats),alpha=0.6) +
+  #scale_color_manual(values=c('lightblue3','lightcoral')) +
+  labs(y = 'Distance (m)',x='')+
+  ggtitle("A) LocSolve Version 1")+ 
+  xlim(0,260) +
+  ylim(0,5230) +
+  theme_bw()+
+  #theme(legend.position = "none") +
+  facet_grid(cols = vars(Quality))
+
+LS.quality.p <- snaps %>% 
+  ggplot() +
+  geom_point(aes(x=LocSolve.Residual,y=LS.dist.WGS,color=LS.Quality,size=SatsUsed),alpha=0.6) +
+  scale_color_manual(values=c('lightblue3','lightcoral')) +
+  labs(y = '',x='') +
+  guides(size = guide_legend(order = 2),col = guide_legend(order = 1))+
+    xlim(0,260) +
+   ylim(0,5230) +
+  ggtitle("B) LocSolve Version 2") +
+  labs(col = 'Quality',size="# Satellites") +
+  theme_bw()
+
+quality.plot <- quality.p + LS.quality.p
+```
+
+
+
+```{r}
+hist.p <- snaps %>% 
+  ggplot(aes(x=dist.WGS,fill=Quality)) +
+  geom_histogram(color='black') +
+  scale_fill_manual(values=c('lightblue3','lightcoral')) +
+  labs(x = 'Distance between tag & dolphin (m)')+
+  ggtitle("Old LocSolve")+ 
+  theme(legend.position = "none")
+
+
+LS.hist.p <- snaps %>% 
+  ggplot(aes(x=LS.dist.WGS,fill=LS.Quality)) +
+  geom_histogram(color='black') +
+  scale_fill_manual(values=c('lightblue3','lightcoral')) +
+  labs(x = 'Distance between tag & dolphin (m)')+
+  ggtitle("New LocSolve") +
+  labs(fill = 'Quality')
+
+hist.p + LS.hist.p
+```  
+  
+**Figure 3. Histogram of distances estimated between the tags and dolphins with reference to good and poor quality locations.**
+
+The 8 poor tag location records that were highly unlikely or implausible (*e.g.*, points on land or far from where dolphins were known to be) before were 'fixed' with the new LocSolve processing, with 6 of the 8 points now being 'good' quality and reasonable estimates.  
+
+
+
+```{r}
+hist.p <- snaps %>% 
+  ggplot(aes(x=Residual,fill=Quality)) +
+  geom_histogram(color='black') +
+  scale_fill_manual(values=c('lightblue3','lightcoral')) +
+  labs(x = 'Residual')+
+  #xlim(0,260) +
+  ylab('Count') +
+  theme_bw() +
+  theme(legend.position = "none")
+
+LS.hist.p <- snaps %>% 
+  ggplot(aes(x=LocSolve.Residual,fill=LS.Quality)) +
+  geom_histogram(color='black') +
+  scale_fill_manual(values=c('lightblue3','lightcoral')) +
+  labs(x = 'Residual')+
+  labs(fill = 'Quality') +
+    ylab('') +
+  xlim(0,260) +
+  theme_bw()
+
+#hist.p + LS.hist.p
+
+
+quality.res <- (quality.p + LS.quality.p) / (hist.p + LS.hist.p)
+
+
+ggsave('Quality_residual.jpg',plot=quality.res,path="C:/Users/rtyson/Dropbox/Projects/SDRP Tagging Projects/WCProjects/FastGPS/Manuscript/Figures",dpi=600,height =8,width=8)  
+``` 
+
+
+
+```{r}
+LS1.quality <- snaps %>% 
+   ggplot() +
+   geom_point(aes(x=Good.Sats,y=Residual,fill=Quality,size=dist.WGS),alpha=0.6,pch=21,position = position_jitter(w = 0.25, h = 0)) +
+  scale_size_continuous(name="Distance (m)",breaks = c(25,100,500,1000),range=c(2,12)) +
+    scale_fill_manual(values=c('lightblue3','lightcoral')) +
+   labs(y = 'Residual',x='Number of Satellites')+
+   ggtitle("A) LocSolve Version 1")+ 
+   # scale_color_viridis_c() +
+   xlim(4,8) +
+   ylim(0,260) +
+   theme_bw() +
+  theme(legend.position = "none")
+    
+LS2.quality <- snaps %>% 
+   ggplot() +
+   geom_point(aes(x=SatsUsed,y=LocSolve.Residual,fill=LS.Quality,size=LS.dist.WGS),alpha=0.6,pch=21,position = position_jitter(w = 0.25, h = 0)) +
+  scale_size_continuous(name="Distance (m)",breaks = c(25,100,500,1000),range=c(2,12)) +
+    scale_fill_manual(values=c('lightblue3','lightcoral'),name="Quality") +
+   labs(y = '',x='Number of Satellites')+
+   ggtitle("A) LocSolve Version 2")+ 
+   # scale_color_viridis_c() +
+    xlim(4,8) +
+   ylim(0,260) +
+   theme_bw() +
+  guides(fill = guide_legend(override.aes = list(size=3)))
+
+quality.plot <- LS1.quality + LS2.quality
+
+ggsave('Quality.jpg',plot=quality.plot,path="C:/Users/rtyson/Dropbox/Projects/SDRP Tagging Projects/WCProjects/FastGPS/Manuscript/Figures",dpi=600,height =5,width=10) 
+```
+
+
+
+
+
+```{r}
+hist.p <- snaps %>% 
+  ggplot(aes(x=SatsUsed,fill=Quality)) +
+  geom_histogram(color='black') +
+  scale_fill_manual(values=c('lightblue3','lightcoral')) +
+  labs(x = 'SatsUsed')+
+  theme_bw() +
+  theme(legend.position = "none")
+
+
+LS.hist.p <- snaps %>% 
+  ggplot(aes(x=SatsUsed,fill=LS.Quality)) +
+  geom_histogram(color='black') +
+  scale_fill_manual(values=c('lightblue3','lightcoral')) +
+  labs(x = 'SatsUsed')+
+  labs(fill = 'Quality') +
+  theme_bw()
+
+hist.p + LS.hist.p
+
+snaps %>% 
+  summarise(N = n(),
+            mean.sats = mean(Good.Sats),
+            median.sats = median(Good.Sats),
+            sd.sats = sd(Good.Sats),
+            min.sats = min(Good.Sats),
+            max.sats = max(Good.Sats))
+
+snaps %>% 
+  summarise(N = n(),
+            mean.sats = mean(SatsUsed),
+            median.sats = median(SatsUsed),
+            sd.sats = sd(SatsUsed),
+            min.sats = min(SatsUsed),
+            max.sats = max(SatsUsed))
+
+snaps %>% 
+  summarise(N = n(),
+            mean.sats = mean(Residual),
+            median.sats = median(Residual),
+            sd.sats = sd(Residual),
+            min.sats = min(Residual),
+            max.sats = max(Residual))
+
+snaps %>% 
+  summarise(N = n(),
+            mean.sats = mean(LocSolve.Residual),
+            median.sats = median(LocSolve.Residual),
+            sd.sats = sd(LocSolve.Residual),
+            min.sats = min(LocSolve.Residual),
+            max.sats = max(LocSolve.Residual))
+```
+
+
+
+```{r}
+plot(snaps$Good.Sats,snaps$Residual,col='red',pch=21)
+points(snaps$SatsUsed,snaps$LocSolve.Residual,col='blue')
+
+snaps %>% 
+  ggplot() +
+   geom_point(aes(x=Good.Sats,y=SatsUsed,fill=Quality),size=2,alpha=0.7,pch=21) +
+```
+
+
+mayble plot resideual vs how many satellites used. 
+
+```{r}
+
+best <- snaps %>% 
+  filter(Quality == "Good") %>% 
+  filter(dist.WGS <= 50) %>% 
+   summarise(N = n(),
+            mean.distance = round(mean(dist.WGS),2),
+            median.distance = median(dist.WGS),
+            sd.distance = sd(dist.WGS),
+            min.distance = min(dist.WGS),
+            max.distance = max(dist.WGS))
+
+LS.best <- snaps %>% 
+  filter(LS.Quality == "Good") %>% 
+  filter(LS.dist.WGS <= 50) %>% 
+   summarise(N = n(),
+            mean.distance = mean(LS.dist.WGS),
+            median.distance = median(LS.dist.WGS),
+            sd.distance = sd(LS.dist.WGS),
+            min.distance = min(LS.dist.WGS),
+            max.distance = max(dist.WGS))
+
+
+```
+
+
+compare the distances between vs 1 and vs 2
+```{r}
+vs1vs2 <- snaps %>% 
+  ggplot() +
+    geom_abline(intercept = 0, slope = 1,linetype=2) +
+  geom_point(aes(x=dist.WGS,y=LS.dist.WGS,fill=Quality,shape=as.factor(Name)),size=2,alpha=0.7) +
+  labs(y = 'LocSolve Version 2',x='LocSolve Version 1') +
+  scale_fill_manual(values=c('lightblue3','lightcoral')) +
+  scale_shape_manual(name="PTT ID",values=c(21,22,24)) +
+  ylim(0,1200)+
+  xlim(0,5300)+
+  theme_bw() +  
+  theme(legend.position = "right")
+
+ggsave('LS comparison.jpg',plot=vs1vs2,path="C:/Users/rtyson/Dropbox/Projects/SDRP Tagging Projects/WCProjects/FastGPS/Manuscript/Figures",dpi=600,height =5,width=6) 
+```
+
